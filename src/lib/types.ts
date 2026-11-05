@@ -1,0 +1,7 @@
+export interface Revision {draft_id:number;document_id:string;revision_id:string;previous_revision_id:string|null;revision_number:number;saved_at:string;saved_by:number|null;change_kind:string;schema_version:number;restored_from_revision_id?:string|null}
+export interface Target {document_id?:string;entity_id?:string;url?:string;path?:string;title?:string;target_revision_id?:string;[key:string]:unknown}
+export interface Link {relation:string;targets:Target[];[key:string]:unknown}
+export interface Draft {id:number;doc_type:string;title:string;description?:string|null;author?:string|null;body_md:string;status:string;submitted_by:number;meta:Record<string,any>&{links?:Link[]};details?:string|null;revision:Revision;[key:string]:unknown}
+export interface Profile {authenticated:boolean;user:{id:number;display_name?:string|null;email?:string|null}|null;roles:string[];preview?:boolean}
+export interface Graph {nodes:{id:string;title:string;node_type:string;revision_id?:string}[];edges:{id:string;from:string;to:string;relation:string}[];references:{source:string;relation:string;target:Target}[];work:{id:string;timestamp:string;notes?:string;quantity_value:number;quantity_unit:string;to_entity:string}[]}
+export type DraftPayload=Pick<Draft,'doc_type'|'title'|'body_md'|'meta'> & {description?:string|null;details?:string|null;author?:string|null;document_id?:string};

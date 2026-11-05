@@ -1,0 +1,18 @@
+# Uses the same static-site deploy profile format as the other websites.
+name = "my-regenerateskagit"
+domain = "my.regenerateskagit.org"
+deploy_dir = "/home/www/my.regenerateskagit.org"
+build_dir = "/home/jimmy/git/sites/my.regenerateskagit.org"
+# Set the real repository URL when this standalone project is committed/pushed.
+git_repo = ""
+git_branch = "main"
+build_cmd = "npm run build"
+output_dir = "dist"
+backend = ""
+[hooks]
+pre_build = "npm ci"
+post_build = ""
+pre_deploy = ""
+post_deploy = ""
+[paths]
+errors = "/var/www/errors"

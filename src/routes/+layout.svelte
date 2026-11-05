@@ -1,0 +1,20 @@
+<script lang="ts">
+ import {onMount} from 'svelte';import {page} from '$app/stores';import {beforeNavigate} from '$app/navigation';
+ import '../app.css';import Icon from '$lib/Icon.svelte';import SignIn from '$lib/SignIn.svelte';import CreateDialog from '$lib/CreateDialog.svelte';
+ import {session,bootstrap,signOut,message,openCreate,toast,workspaceError,dirtyEditor} from '$lib/workspace';
+ let mobile=false,logoutError='';
+ const navigation=[{path:'/',label:'My workspace',icon:'home'},{path:'/library/',label:'My library',icon:'library'},{path:'/connections/',label:'Connections',icon:'graph'},{path:'/exports/',label:'Take your work',icon:'download'}];
+ onMount(()=>{void bootstrap();});beforeNavigate(()=>{mobile=false;});
+ async function logout(){if($dirtyEditor&&!confirm('Sign out without saving? The local recovery copy will be removed.'))return;logoutError='';try{await signOut();mobile=false;}catch(e){logoutError=message(e);}}
+ $: section=navigation.find(n=>n.path==='/'?$page.url.pathname==='/':$page.url.pathname.startsWith(n.path))?.label||'Experiment workspace';
+ $: initials=($session.profile?.user?.display_name||'You').split(' ').map(n=>n[0]).slice(0,2).join('');
+</script>
+<svelte:head><title>My workspace · Regenerate Skagit</title><meta name="description" content="A private place to follow your interests, try small experiments, and keep what you learn."/></svelte:head>
+{#if $session.loading}<div class="initial-loading"><span class="brand-mark">✳</span><p>Opening your workspace…</p></div>
+{:else if $session.error}<main class="connection-state"><span class="brand-mark">✳</span><h1>Let’s get you connected.</h1><p>We couldn’t open your workspace.</p><p class="fine">{$session.error}</p><button class="button primary" on:click={bootstrap}>Try again<Icon name="arrow" size={17}/></button></main>
+{:else if !$session.profile?.authenticated}<SignIn/>
+{:else}
+ <div class="app-frame"><aside class:mobile-open={mobile} class="sidebar"><a class="brand" href="/"><span class="brand-mark">✳</span><div>regenerate<span>SKAGIT · YOUR WORKSPACE</span></div></a><div class="sidebar-section">A LITTLE SPACE TO EXPLORE</div><nav aria-label="Main navigation">{#each navigation as item}<a href={item.path} class:active={item.path==='/'?$page.url.pathname==='/':$page.url.pathname.startsWith(item.path)} aria-current={(item.path==='/'?$page.url.pathname==='/':$page.url.pathname.startsWith(item.path))?'page':undefined}><Icon name={item.icon} size={19}/>{item.label}</a>{/each}</nav><div class="sidebar-note"><span class="small-leaf"><Icon name="leaf" size={23}/></span><p>Big interests.<br/><em>Small, real steps.</em></p><a href="https://regenerateskagit.org/">Out in the community ↗</a></div><div class="account"><span class="avatar">{initials}</span><div><strong>{$session.profile.user?.display_name||'Your account'}</strong><span>Personal workspace</span></div><button class="icon-button" aria-label="Sign out" on:click={logout}><Icon name="logout" size={17}/></button></div>{#if logoutError}<p class="alert">{logoutError}</p>{/if}</aside>
+ <div class="app-main"><header class="topbar"><div class="row"><button class="icon-button mobile-toggle" aria-label="Toggle navigation" aria-expanded={mobile} on:click={()=>mobile=!mobile}><Icon name="menu"/></button><span class="topbar-title">{section}</span></div><div class="row topbar-actions">{#if $session.profile.preview}<span class="preview-badge">Sample workspace</span>{/if}<span class="private-badge"><Icon name="lock" size={13}/> Private by default</span><button class="button primary compact" on:click={()=>openCreate()}><Icon name="plus" size={16}/>New experiment</button></div></header>
+ <main class="main-content">{#if $workspaceError}<div class="alert" role="alert">{$workspaceError}</div>{/if}<slot/></main><footer class="app-footer"><span>Rooted in curiosity. Connected through learning.</span><span>RAFT · Regenerate Skagit</span></footer></div></div><CreateDialog/>{#if $toast}<div class="toast" role="status"><Icon name="check" size={17}/>{$toast}</div>{/if}
+{/if}

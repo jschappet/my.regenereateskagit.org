@@ -1,0 +1,10 @@
+<script lang="ts">
+ import type {Draft} from './types';import {api,graph,message,notify} from './workspace';import type {Graph} from './types';import Icon from './Icon.svelte';
+ export let parent:Draft;let open=false,description='',hours:number|undefined=undefined,busy=false,error='',eventId='',occurredAt='';
+ $: entries=$graph.work.filter(w=>w.to_entity===parent.revision.document_id);
+ async function record(){busy=true;error='';eventId ||=crypto.randomUUID();occurredAt ||=new Date().toISOString();try{
+  await api.call('content_record_work',{id:parent.id},{event_id:eventId,revision_id:parent.revision.revision_id,occurred_at:occurredAt,description,hours:hours?Number(hours):null,activity:'experiment'});
+  const result=await api.call<Graph>('content_graph');if(result)graph.set(result);description='';hours=undefined;eventId='';occurredAt='';open=false;notify('Work recorded.');
+ }catch(e){error=message(e);}finally{busy=false;}}
+</script>
+<section class="work-panel"><div class="row between"><h3>Small, real steps</h3><button class="text-button" on:click={()=>open=!open}><Icon name="plus" size={15}/>Record work</button></div><p class="fine">Calls made, materials gathered, things tried. Keep a note of the work you actually did.</p>{#if open}<form on:submit|preventDefault={record}><label for="work-description">What did you do?<textarea id="work-description" rows="3" bind:value={description} required></textarea></label><label for="work-hours">Time spent, if useful<input id="work-hours" type="number" min="0.01" step="any" bind:value={hours} placeholder="Hours, optional"/></label>{#if error}<p class="alert" role="alert">{error}</p>{/if}<button class="button small" disabled={busy}>{busy?'Recording…':'Record this work'}</button></form>{/if}{#each entries.slice(-3).reverse() as entry}<div class="work-entry"><Icon name="check" size={14}/><div><p>{entry.notes}</p><small>{new Date(entry.timestamp+'Z').toLocaleDateString()}{entry.quantity_unit==='hours'?` · ${entry.quantity_value} hours`:''}</small></div></div>{/each}</section>

@@ -1,0 +1,10 @@
+{
+  "name": "@heron/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {"types": "./heron-client.d.mts", "import": "./heron-client.mjs"},
+    "./svelte": {"types": "./svelte.d.mts", "import": "./svelte.mjs"}
+  }
+}
