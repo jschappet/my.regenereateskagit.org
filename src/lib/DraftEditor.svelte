@@ -1,6 +1,6 @@
 <script lang="ts">
  import {onMount,onDestroy} from 'svelte';import {beforeNavigate} from '$app/navigation';import Icon from './Icon.svelte';
- import {documents,api,ApiError,loadDocument,saveDocument,message,notify,readRecovery,writeRecovery,clearRecovery,upsert,dirtyEditor} from './workspace';
+ import {documents,openCreate,api,ApiError,loadDocument,saveDocument,message,notify,readRecovery,writeRecovery,clearRecovery,upsert,dirtyEditor} from './workspace';
  import type {Draft,DraftPayload,Revision} from './types';import {sameContent} from './content.mjs';
  import {steps,parseSections,composeSections,startReadiness} from './journey.mjs';
  export let documentId:string|undefined=undefined;export let parent:Draft|null=null;export let step:any=null;
@@ -8,6 +8,7 @@
  let values:Record<string,string>={},extra='',loading=true,busy=false,error='',baseline='',pending:any=null,conflict:Draft|null=null;
  let history:Revision[]=[],showHistory=false,historical:Draft|null=null,showMarkdown=false,recoveryFailed=false,ready=false;
  $: fields=step?.fields??[];
+ $: nextStep=step?steps[steps.findIndex(s=>s.key===step.key)+1]:null;
  $: outputBody=step&&!showMarkdown?composeSections(fields,values,extra):body;
  $: fingerprint=JSON.stringify({title,body:outputBody,meta,details});
  $: dirty=ready&&fingerprint!==baseline;
@@ -66,6 +67,17 @@
  {#if step?.key==='experiment_start'}<div class="start-inset">{#if meta.started_at}<Icon name="check"/><div><strong>Your experiment has begun.</strong><p>Started {new Date(meta.started_at).toLocaleDateString()}.</p></div>{:else}<Icon name="calendar"/><div><strong>Choosing an experiment didn’t start the clock.</strong><p>Confirm your company and meeting dates, then begin when you’re ready.</p></div>{/if}</div>{/if}
  {#if step&&!showMarkdown}{#each fields as field,i}<label for={`response-${i}`}><span class="prompt-label">{field[1]}</span>{#if field[2]}<span class="field-help">{field[2]}</span>{/if}<textarea id={`response-${i}`} rows={fields.length===1?12:i===0?8:4} bind:value={values[field[0]]} placeholder="Make a little room for your thoughts…"></textarea></label>{/each}{:else}<label for="document-body"><span class="prompt-label">{step?'Your notes in Markdown':'Your notes'}</span><span class="field-help">Markdown is welcome. Plain words are enough.</span><textarea id="document-body" class="markdown-editor" rows="18" bind:value={body} placeholder="What’s on your mind?"></textarea></label>{/if}
  </fieldset>
+ {#if current&&!dirty&&!pending&&!conflict}
+ <section class="recovery-banner" aria-label="What’s next" aria-live="polite">
+ <strong>Your notes are saved.</strong>
+ {#if parent&&nextStep}
+ <p>You can keep writing here or move on to {nextStep.short.toLowerCase()}.</p>
+ <a class="button primary" href={`/experiments/?id=${parent.revision.document_id}&step=${nextStep.key}`}>Continue to {nextStep.short}<Icon name="arrow" size={16}/></a>
+ {:else if !parent&&['idea','interest'].includes(current.doc_type)}
+ <p>Turn this into a small experiment. Next, give your thoughts room and choose one piece to explore. Your original notes will stay here.</p>
+ <button class="button primary" on:click={()=>openCreate('experiment',current!.revision.document_id)}>Build an experiment from this<Icon name="arrow" size={16}/></button>
+ {:else}<p>Come back whenever you’re ready, or explore your other saved work.</p><a class="text-link" href="/library/">Back to my library<Icon name="arrow" size={16}/></a>{/if}
+ </section>{/if}
  {#if step?.key==='invitation'&&outputBody}<div class="row wrap invitation-actions"><button class="button small" on:click={async()=>{try{await navigator.clipboard.writeText(outputBody);notify('Invitation copied.');}catch{error='Copy isn’t available in this browser. You can select and copy the text above.';}}}><Icon name="mail" size={16}/>Copy invitation</button><a class="text-link" href={`mailto:?subject=${encodeURIComponent('Join me for a RAFT experiment')}&body=${encodeURIComponent(outputBody)}`}>Compose an email ↗</a></div>{/if}
  <div class="editor-bottom"><div><span class="save-status"><span class:unsaved={dirty}></span>{busy?'Saving…':dirty?'Unsaved edits':current?'Saved to your workspace':'A new private draft'}</span>{#if recoveryFailed}<small class="warning">Local recovery isn’t available. Save before leaving.</small>{:else if dirty}<small>Recovery copy kept on this device</small>{/if}</div><div class="row">{#if step}<button class="text-button subtle" on:click={toggleMarkdown} disabled={busy||!!pending}>{showMarkdown?'Guided prompts':'Markdown'}</button>{/if}{#if step?.key==='experiment_start'&&!meta.started_at}<button class="button primary" on:click={begin} disabled={busy||!!pending||!!conflict}>Start my experiment<Icon name="arrow" size={16}/></button>{:else}<button class="button primary" on:click={save} disabled={busy||!!pending||!!conflict||(!dirty&&!!current)}>{busy?'Saving…':'Save my notes'}<Icon name="check" size={16}/></button>{/if}</div></div></div>
 {/if}

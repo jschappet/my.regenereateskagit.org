@@ -19,7 +19,7 @@ export function linksTo(draft,id,relations=['part_of','reports_on']) {
 export function experimentDocuments(parent,all) {
  const id=parent.revision.document_id;
  const interests=new Set((parent.meta?.links??[]).filter(l=>l.relation==='grew_from').flatMap(l=>l.targets.map(t=>t.document_id)));
- return all.filter(d=>d.revision.document_id!==id&&(linksTo(d,id)||(d.doc_type==='interest'&&interests.has(d.revision.document_id))));
+ return all.filter(d=>d.revision.document_id!==id&&(linksTo(d,id)||(['interest','idea'].includes(d.doc_type)&&interests.has(d.revision.document_id))));
 }
 export function stepDocument(parent,all,step) {return experimentDocuments(parent,all).find(d=>d.doc_type===step.type);}
 export function phase(parent,all) {
