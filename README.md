@@ -52,7 +52,8 @@ For UI review without touching real accounts:
 npm run dev:preview
 ```
 
-Open the printed local URL. The clearly labelled **Sample workspace** uses an
+Open the printed local URL. The sample invitation is available at `/invitations/?id=00000000-0000-4000-8000-000000000020`.
+The clearly labelled **Sample workspace** uses an
 in-memory API fixture in the development server. Edits disappear when that server
 stops. Sign-in accepts test credentials only in this explicit preview mode.
 The fixture is not a fallback for failed real requests, is not included in the
@@ -80,8 +81,11 @@ Do not edit the vendored files independently.
 - Read and restore historical versions as new saves.
 - Partner-or-solo planning and meeting dates; the clock starts only after an
   explicit participation decision and valid ordered meeting dates.
-- Invitation drafting, copying, and composing in the user's email application.
-  This does not send email or claim a friend has accepted an invitation.
+- Invitation drafting and email delivery, with unverified recipient accounts,
+  private account setup links, and public invitation snapshots.
+- Recipient-only acceptance/decline. Acceptance creates an independent experiment
+  linked as growing from or alongside the original. Other signed-in visitors can
+  request to follow along; owners can see requests and delivery/response status.
 - Connections from actual ledger graph relationships; explicit work recording.
 - Private experiment ZIP export with readable Markdown, permanent IDs,
   relationships, private notebook metadata, work logs, optional full history,
@@ -91,8 +95,8 @@ Do not edit the vendored files independently.
 
 ## Intentional boundaries
 
-This release edits private work. The public invitation board, notifications,
-account-linked invitation acceptance, shared scheduling agreements, Group/Public
+This release edits private work. The public invitation board, ongoing notifications,
+shared scheduling agreements, Group/Public
 sharing, publishing review, and cross-host publishing remain separate work.
 Partner confirmation here is an owner's record of an arrangement made outside
 the app; it is not server-verified acceptance. The final step prepares review
@@ -106,3 +110,40 @@ Recovery copies protect editing in the browser. They are not an offline document
 store or a sync system. Export uses the latest saved documents returned when the
 export starts. It does not include edits still open in an editor. Restoring history
 never revives publishing approval.
+
+## Invitation delivery
+
+Requires Heron’s `2026-11-05-000003_member_invitations` migration and invitation
+capabilities. Email uses the existing Heron SMTP configuration and host base URL.
+No mail is sent during builds or tests. Failed delivery remains recorded and can
+be retried after one minute. A send interrupted by a server restart can be retried
+after ten minutes; as with SMTP generally, an interrupted acknowledgement may
+result in a duplicate email, but not a duplicate invitation or experiment.
+
+The invitation URL exposes only its saved invitation text, experiment title, and
+sender name. It never exposes the experiment notebook or recipient address.
+Account setup credentials are separate, single-use, hashed in storage, expire
+after seven days, and travel in a URL fragment removed by the landing page. New
+accounts verify their email by completing this setup. Accepting an invitation
+grants an initial host membership without overriding a previous revocation.
+Acceptance creates a private experiment without starting its clock or confirming
+meeting dates. Follow requests record interest; they grant no notebook access.
+
+## Recovery, source documents, and ledger summary
+
+Sign-in includes **Forgot password?**. Email recovery uses host-bound, single-use
+30-minute tokens and requires Heron’s
+`2026-11-05-000004_member_password_resets` migration. The request and reset forms
+are public static routes; account existence is not disclosed by the request
+response. SMTP delivery needs the existing server email settings. Builds and
+sample preview do not send email.
+
+Connections includes links to the original referenced document and its source.
+Journey documents open at their experiment step. Accepted invitations link back
+to the public invitation snapshot while the inviter’s notebook stays private.
+
+**More → Ledger summary** is available to signed-in members. Everyone sees the
+same site-wide category/connection/activity counts. The D3 graph adapts the
+RegenSkagit ledger interface and includes filters, zoom, dragging, and count
+tables. The summary API returns aggregated categories only: no individual
+identities, document titles, content, email, or raw ledger rows reach the browser.
