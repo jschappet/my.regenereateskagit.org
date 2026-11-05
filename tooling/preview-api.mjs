@@ -18,8 +18,10 @@ export function previewApi(){
  save({doc_type:'experiment',title:'A quieter walk around the block',description:'Slowing down for ten minutes to notice who else is here. No special equipment, just attention.',body_md:'',meta:{workspace_version:1,links:[{relation:'grew_from',targets:[{document_id:uid(8),title:'Who shares our neighborhood?'}]}]}},uid(9));
  save({doc_type:'idea',title:'A tiny seed library',body_md:'What if neighbors could leave a few seeds and a small note about what grew well?',meta:{workspace_version:1}},uid(10));
  const work=[{id:uid(900),timestamp:at(-1).slice(0,-1),recorded_at:at(-1).slice(0,-1),notes:'Talked to the community garden about collecting scraps.',quantity_value:0.5,quantity_unit:'hours',from_entity:uid(700),to_entity:uid(2),resource_type:'work',host_id:1,created_by:uid(700),details:{document_id:uid(2),revision_id:docs.get(uid(2)).revision.revision_id}}];
- const publicRoutes=[['login','POST','/api/auth/login'],['logout','POST','/api/auth/logout'],['profile_json','GET','/api/profile']];
- const memberRoutes=[['content_list','GET','/api/drafts/list'],['content_document','GET','/api/drafts/document/{document_id}'],['content_get','GET','/api/drafts/get/{id}'],['content_create','POST','/api/drafts/create'],['content_update','POST','/api/drafts/update/{id}'],['content_history','GET','/api/drafts/get/{id}/history'],['content_revision','GET','/api/drafts/get/{id}/revisions/{revision_id}'],['content_restore','POST','/api/drafts/get/{id}/restore'],['content_graph','GET','/api/drafts/graph'],['content_work','GET','/api/drafts/get/{id}/work'],['content_record_work','POST','/api/drafts/get/{id}/work'],['content_work_markdown','GET','/api/drafts/get/{id}/work.md']];
+ child(11,'invitation','A little company','## Invitation\n\nWould you like to try a small experiment alongside mine? We can share what we learn over two short conversations.',2);
+ const invitations=new Map([[uid(20),{id:uid(20),title:'A small experiment in neighborhood care',body:'Would you like to explore a small question of your own alongside mine?\n\nWe’ll each keep our own experiment and meet twice to share what we learn.',sender_name:'Sam Green',recipient:true,status:'pending',experiment_id:null,following_requested:false}]]);
+ const publicRoutes=[['member_password_reset_request','POST','/api/auth/password-reset/request'],['member_password_reset_complete','POST','/api/auth/password-reset/complete'],['invitation_view','GET','/api/invitations/{id}'],['invitation_respond','POST','/api/invitations/{id}/respond'],['invitation_follow','POST','/api/invitations/{id}/follow'],['invitation_setup','POST','/api/invitations/{id}/setup'],['login','POST','/api/auth/login'],['logout','POST','/api/auth/logout'],['profile_json','GET','/api/profile']];
+ const memberRoutes=[['member_ledger_summary','GET','/api/member/ledger-summary'],['invitation_send','POST','/api/invitations/send'],['invitation_sent','GET','/api/invitations/sent/{id}'],['content_list','GET','/api/drafts/list'],['content_document','GET','/api/drafts/document/{document_id}'],['content_get','GET','/api/drafts/get/{id}'],['content_create','POST','/api/drafts/create'],['content_update','POST','/api/drafts/update/{id}'],['content_history','GET','/api/drafts/get/{id}/history'],['content_revision','GET','/api/drafts/get/{id}/revisions/{revision_id}'],['content_restore','POST','/api/drafts/get/{id}/restore'],['content_graph','GET','/api/drafts/graph'],['content_work','GET','/api/drafts/get/{id}/work'],['content_record_work','POST','/api/drafts/get/{id}/work'],['content_work_markdown','GET','/api/drafts/get/{id}/work.md']];
  function graph(){const all=[...docs.values()];const edges=[],references=[];for(const doc of all)for(const link of doc.meta?.links||[])for(const target of link.targets){references.push({source:doc.revision.document_id,relation:link.relation,target});if(docs.has(target.document_id))edges.push({id:doc.revision.document_id+target.document_id+link.relation,from:doc.revision.document_id,to:target.document_id,relation:link.relation,source_revision_id:doc.revision.revision_id});}return {nodes:all.map(d=>({id:d.revision.document_id,title:d.title,node_type:d.doc_type,revision_id:d.revision.revision_id})),edges,references,work};}
  return {name:'raft-local-preview-api',apply:'serve',configureServer(server){server.middlewares.use(async(req,res,next)=>{
   if(!req.url?.startsWith('/api/'))return next();const url=new URL(req.url,'http://localhost');let raw='';for await(const chunk of req)raw+=chunk;
@@ -28,8 +30,41 @@ export function previewApi(){
   if(url.pathname==='/api/config/capabilities')return respond([...publicRoutes,...signedIn?memberRoutes:[]].map(([key,method,url])=>({key,method,url,auth:!publicRoutes.some(r=>r[0]===key)})));
   if(url.pathname==='/api/profile')return respond({authenticated:signedIn,user:signedIn?{id:7,display_name:'Jamie Rivers'}:null,roles:signedIn?['member']:[],preview:true});
   if(url.pathname==='/api/auth/login'){signedIn=true;return respond({message:'Signed into local preview'});}
+  if(url.pathname==='/api/auth/password-reset/request')return respond({message:'Sample workspace: no email was sent. Real accounts receive a private reset link.'});
+  if(url.pathname==='/api/auth/password-reset/complete')return respond({message:'Password reset links are available only for real accounts.'},400);
   if(url.pathname==='/api/auth/logout'){signedIn=false;return respond('Logged out',200,'text/plain');}
+  const invitationPath=url.pathname.match(/^\/api\/invitations\/([^/]+)(?:\/(.*))?$/);
+  if(invitationPath&&invitationPath[1]!=='send'&&invitationPath[1]!=='sent'){
+   const invite=invitations.get(invitationPath[1]);if(!invite)return respond({message:'Invitation not found'},404);
+   const action=invitationPath[2];
+   if(!action)return respond({...invite,is_recipient:signedIn&&invite.recipient,is_sender:signedIn&&!invite.recipient,status:signedIn&&invite.recipient?invite.status:null});
+   if(!signedIn)return respond({message:'Sign in to continue'},401);
+   if(action==='follow'){invite.following_requested=true;return respond({following_requested:true});}
+   if(action==='respond'&&invite.recipient){
+    if(invite.status==='pending'){
+     invite.status=body.action==='accept'?'accepted':'declined';
+     if(body.action==='accept'){const id=randomUUID();save({doc_type:'experiment',title:body.title||invite.title,body_md:'',meta:{workspace_version:1,links:[{relation:body.relationship==='with'?'alongside':'grew_from',targets:[{document_id:uid(21),title:invite.title,invitation_id:invite.id}]}]}},id);invite.experiment_id=id;}
+    }
+    return respond({status:invite.status,experiment_id:invite.experiment_id});
+   }
+   return respond({message:'This action is unavailable in the sample workspace'},400);
+  }
   if(!signedIn)return respond({message:'Sign in to continue'},401);
+  if(url.pathname==='/api/invitations/send'){
+   let invite=[...invitations.values()].find(i=>i.email===body.email&&i.document_id===body.document_id);
+   if(!invite){const doc=docs.get(body.document_id),experiment=docs.get(body.experiment_id);if(!doc||!experiment)return respond({message:'Save your invitation first'},400);
+    invite={id:randomUUID(),title:experiment.title,body:doc.body_md,sender_name:'Jamie Rivers',recipient:false,status:'pending',email:body.email,document_id:body.document_id,delivery:'sent'};invitations.set(invite.id,invite);}
+   return respond({id:invite.id,url:`/invitations/?id=${invite.id}`,delivery:'sent'});
+  }
+  if(url.pathname.startsWith('/api/invitations/sent/'))return respond({invitations:[...invitations.values()].filter(i=>i.document_id===url.pathname.split('/').at(-1)),followers:[]});
+  if(url.pathname==='/api/member/ledger-summary'){
+   const counts=new Map([['person',1]]),links=new Map();
+   for(const doc of docs.values())counts.set('document:'+doc.doc_type,(counts.get('document:'+doc.doc_type)||0)+1);
+   const add=(source,target,relation,kind)=>{const key=[source,target,relation,kind].join('|');if(!links.has(key))links.set(key,{source,target,relation,kind,count:0});links.get(key).count++;};
+   for(const edge of graph().edges){const source=docs.get(edge.from),target=docs.get(edge.to);if(source&&target)add('document:'+source.doc_type,'document:'+target.doc_type,edge.relation,'relationship');}
+   for(const entry of work){const target=docs.get(entry.to_entity);if(target)add('person','document:'+target.doc_type,'work','event');}
+   const all=[...links.values()];return respond({nodes:[...counts].map(([id,count])=>({id,count})),links:all,entity_count:[...counts.values()].reduce((a,b)=>a+b,0),relationship_count:all.filter(l=>l.kind==='relationship').reduce((a,l)=>a+l.count,0),event_count:all.filter(l=>l.kind==='event').reduce((a,l)=>a+l.count,0)});
+  }
   if(url.pathname==='/api/drafts/list')return respond({drafts:[...docs.values()].reverse(),meta:{total:docs.size}});
   if(url.pathname==='/api/drafts/graph')return respond(graph());
   if(url.pathname==='/api/drafts/create'){
