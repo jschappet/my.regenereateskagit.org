@@ -15,6 +15,17 @@ npm run build
 ```
 
 Build command: `npm run build`. Output directory: `dist`.
+
+To rebuild static files automatically as you edit:
+
+```sh
+npm run build:watch
+```
+
+Keep this running while using `http://my.regen.localhost:8582/`. It performs an
+initial build and rebuilds `dist` when source files change. Refresh the browser
+after each rebuild. Stop it with Ctrl+C. Each rebuild runs the shared API client integrity check. Changes during a build
+are queued for a follow-up build; failed builds keep watching for corrections.
 `deploy.site.toml.example` follows the existing website deployment profile format;
 set its repository URL when the standalone site repository is created. Deployment
 and DNS are not changed by building this app.
@@ -163,3 +174,17 @@ photo, title, description, and canonical URL. No JavaScript crawler support or
 additional production proxy rules are required. A default local photograph is
 included; uploaded cover photos use the existing public upload store. Messaging
 apps control preview display and caching, so older cards can take time to update.
+
+## Invitation role groups
+
+**Invite or share → Manage invitations & role groups** supports separate feedback,
+follow-along, collaboration, and advisor invitations. Each invitation has its own
+public text, link and ledger group. People & roles shows membership, private
+feedback, and audit history; owners can remove membership or close invitations.
+Viewer sections can be Private, Public, or shared with selected role groups.
+Accepting one invitation grants no access to another invitation's group and no
+editing or ownership. Feedback needs no account and creates no membership.
+Requires HERON's `2026-11-06-000004_invitation_role_groups` migration. Existing
+test invitations are not migrated into role groups. In `dev:preview`, sign in as
+`guest` with any sample password to review recipient actions; other sample
+usernames use the owner identity. No real mail is sent in sample preview.
