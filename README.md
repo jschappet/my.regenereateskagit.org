@@ -147,3 +147,19 @@ same site-wide category/connection/activity counts. The D3 graph adapts the
 RegenSkagit ledger interface and includes filters, zoom, dragging, and count
 tables. The summary API returns aggregated categories only: no individual
 identities, document titles, content, email, or raw ledger rows reach the browser.
+
+## Public shares and link previews
+
+The **Invitation** journey step brings invitations and public experiment sharing
+together. Choose **Invite someone to explore alongside me** or **Share experiment
+story & impact**. Other journey steps link here through **Invite or share**. Choose a cover photo and description, review the public text, then create
+a public share link. Copy, text, and email controls use a preview-ready URL.
+Recipients see only the explicitly shared snapshot; notebooks and other journey
+notes remain private. Owners can update or stop a public share.
+
+Requires Heron's `2026-11-06-000001_member_shares` migration. The shared URLs return
+Open Graph and Twitter card tags in their initial HTML, including the specific
+photo, title, description, and canonical URL. No JavaScript crawler support or
+additional production proxy rules are required. A default local photograph is
+included; uploaded cover photos use the existing public upload store. Messaging
+apps control preview display and caching, so older cards can take time to update.

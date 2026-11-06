@@ -1,8 +1,9 @@
 <script lang="ts">
+ import ShareLinks from '$lib/ShareLinks.svelte';
  import {renderMarkdown} from '$lib/markdown.mjs';
  import {onMount} from 'svelte';import {page} from '$app/stores';import {goto} from '$app/navigation';
  import {api,session,message,refreshDocuments,signOut} from '$lib/workspace';import SignIn from '$lib/SignIn.svelte';
- type Invitation={id:string;title:string;body:string;sender_name:string;is_recipient:boolean;is_sender:boolean;status:string|null;experiment_id:string|null;following_requested:boolean};
+ type Invitation={id:string;title:string;body:string;sender_name:string;is_recipient:boolean;is_sender:boolean;status:string|null;experiment_id:string|null;following_requested:boolean;description:string;image:string;url:string};
  let invitation:Invitation|null=null,loading=true,busy=false,error='',login=false,setupToken='',password='',confirmPassword='',setupDone=false,username='',title='',relationship='from';
  let loadedUser:number|undefined;
  $: userId=$session.profile?.user?.id;
@@ -28,7 +29,7 @@
  {#if $session.profile?.preview}<p class="fine">Sample workspace · no real email is sent.</p>{/if}
  {#if loading}<p>Opening your invitation…</p>{:else if invitation}
  <div class="page-heading"><span class="eyebrow">YOU’RE INVITED</span><h1>{invitation.title}</h1><p>An invitation from {invitation.sender_name}</p></div>
- <section class="panel"><div class="invitation-body">{@html renderMarkdown(invitation.body)}</div></section>
+ <img class="invitation-photo" src={invitation.image} alt="Invitation cover"/><ShareLinks url={invitation.url||`/api/invitations/${invitation.id}/share`} title={invitation.title} description={invitation.description}/><section class="panel"><div class="invitation-body">{@html renderMarkdown(invitation.body)}</div></section>
  {#if error}<p class="alert" role="alert">{error}</p>{/if}
  {#if setupToken}
  <form class="panel invitation-response" on:submit|preventDefault={setup}><h2>Make yourself at home</h2><p class="fine">Set a password to verify your email and respond to this invitation.</p>
