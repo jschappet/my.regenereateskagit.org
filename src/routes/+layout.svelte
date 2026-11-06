@@ -10,7 +10,7 @@
  $: initials=($session.profile?.user?.display_name||'You').split(' ').map(n=>n[0]).slice(0,2).join('');
 </script>
 <svelte:head><title>My workspace · Regenerate Skagit</title><meta name="description" content="A private place to follow your interests, try small experiments, and keep what you learn."/></svelte:head>
-{#if ['/invitations','/shares','/forgot-password','/reset-password'].some(path=>$page.url.pathname.startsWith(path))}<slot/>{:else if $session.loading}<div class="initial-loading"><span class="brand-mark">✳</span><p>Opening your workspace…</p></div>
+{#if ['/invitations','/shares','/view','/forgot-password','/reset-password'].some(path=>$page.url.pathname.startsWith(path))}<slot/>{:else if $session.loading}<div class="initial-loading"><span class="brand-mark">✳</span><p>Opening your workspace…</p></div>
 {:else if $session.error}<main class="connection-state"><span class="brand-mark">✳</span><h1>Let’s get you connected.</h1><p>We couldn’t open your workspace.</p><p class="fine">{$session.error}</p><button class="button primary" on:click={bootstrap}>Try again<Icon name="arrow" size={17}/></button></main>
 {:else if !$session.profile?.authenticated}<SignIn/>
 {:else}
