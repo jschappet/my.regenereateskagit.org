@@ -10,7 +10,7 @@ build_cmd = "npm run build"
 output_dir = "dist"
 backend = ""
 [hooks]
-pre_build = "npm ci"
+pre_build = "npm install"
 post_build = ""
 pre_deploy = ""
 post_deploy = ""
