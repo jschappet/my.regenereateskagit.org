@@ -1,10 +1,11 @@
 <script lang="ts">
- import InvitationSend from './InvitationSend.svelte';
+ import InvitationSend from './InvitationSend.svelte';import SharePanel from './SharePanel.svelte';
  import {onMount,onDestroy} from 'svelte';import {beforeNavigate} from '$app/navigation';import Icon from './Icon.svelte';
  import {documents,openCreate,api,ApiError,loadDocument,saveDocument,message,notify,readRecovery,writeRecovery,clearRecovery,upsert,dirtyEditor} from './workspace';
  import type {Draft,DraftPayload,Revision} from './types';import {sameContent} from './content.mjs';
  import {steps,parseSections,composeSections,startReadiness} from './journey.mjs';
  export let documentId:string|undefined=undefined;export let parent:Draft|null=null;export let step:any=null;
+ let shareTitle='',shareUploading=false,shareDescription='',shareImage='/api/shares/default-photo.jpg';
  let current:Draft|null=null,id='',recoveryId='',title='',body='',meta:Record<string,any>={},details:string|null=null;
  let values:Record<string,string>={},extra='',loading=true,busy=false,error='',baseline='',pending:any=null,conflict:Draft|null=null;
  let history:Revision[]=[],showHistory=false,historical:Draft|null=null,showMarkdown=false,recoveryFailed=false,ready=false;
@@ -79,7 +80,7 @@
  <button class="button primary" on:click={()=>openCreate('experiment',current!.revision.document_id)}>Build an experiment from this<Icon name="arrow" size={16}/></button>
  {:else}<p>Come back whenever you’re ready, or explore your other saved work.</p><a class="text-link" href="/library/">Back to my library<Icon name="arrow" size={16}/></a>{/if}
  </section>{/if}
- {#if step?.key==='invitation'&&parent}<InvitationSend documentId={id} experimentId={parent.revision.document_id} disabled={!current||dirty||busy||!!pending||!!conflict}/>{/if}
+ {#if step?.key==='invitation'&&parent}{#if current}<SharePanel document={current} initialTitle={parent.title} bind:title={shareTitle} bind:description={shareDescription} bind:image={shareImage} bind:uploading={shareUploading} disabled={dirty||busy||!!pending||!!conflict}/>{/if}<InvitationSend title={shareTitle} description={shareDescription} image={shareImage} documentId={id} experimentId={parent.revision.document_id} disabled={!current||dirty||busy||shareUploading||!!pending||!!conflict}/>{/if}
  {#if step?.key==='invitation'&&outputBody}<div class="row wrap invitation-actions"><button class="button small" on:click={async()=>{try{await navigator.clipboard.writeText(outputBody);notify('Invitation copied.');}catch{error='Copy isn’t available in this browser. You can select and copy the text above.';}}}><Icon name="mail" size={16}/>Copy invitation</button><a class="text-link" href={`mailto:?subject=${encodeURIComponent('Join me for a RAFT experiment')}&body=${encodeURIComponent(outputBody)}`}>Compose an email ↗</a></div>{/if}
  <div class="editor-bottom"><div><span class="save-status"><span class:unsaved={dirty}></span>{busy?'Saving…':dirty?'Unsaved edits':current?'Saved to your workspace':'A new private draft'}</span>{#if recoveryFailed}<small class="warning">Local recovery isn’t available. Save before leaving.</small>{:else if dirty}<small>Recovery copy kept on this device</small>{/if}</div><div class="row">{#if step}<button class="text-button subtle" on:click={toggleMarkdown} disabled={busy||!!pending}>{showMarkdown?'Guided prompts':'Markdown'}</button>{/if}{#if step?.key==='experiment_start'&&!meta.started_at}<button class="button primary" on:click={begin} disabled={busy||!!pending||!!conflict}>Start my experiment<Icon name="arrow" size={16}/></button>{:else}<button class="button primary" on:click={save} disabled={busy||!!pending||!!conflict||(!dirty&&!!current)}>{busy?'Saving…':'Save my notes'}<Icon name="check" size={16}/></button>{/if}</div></div></div>
 {/if}

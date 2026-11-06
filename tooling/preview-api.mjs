@@ -1,4 +1,4 @@
-import {randomUUID} from 'node:crypto';
+import {randomUUID} from 'node:crypto';import {readFileSync} from 'node:fs';
 const uid=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const copy=value=>JSON.parse(JSON.stringify(value));
 /** @returns {import('vite').Plugin} */
@@ -20,13 +20,24 @@ export function previewApi(){
  const work=[{id:uid(900),timestamp:at(-1).slice(0,-1),recorded_at:at(-1).slice(0,-1),notes:'Talked to the community garden about collecting scraps.',quantity_value:0.5,quantity_unit:'hours',from_entity:uid(700),to_entity:uid(2),resource_type:'work',host_id:1,created_by:uid(700),details:{document_id:uid(2),revision_id:docs.get(uid(2)).revision.revision_id}}];
  child(11,'invitation','A little company','## Invitation\n\nWould you like to try a small experiment alongside mine? We can share what we learn over two short conversations.',2);
  const invitations=new Map([[uid(20),{id:uid(20),title:'A small experiment in neighborhood care',body:'Would you like to explore a small question of your own alongside mine?\n\nWe’ll each keep our own experiment and meet twice to share what we learn.',sender_name:'Sam Green',recipient:true,status:'pending',experiment_id:null,following_requested:false}]]);
- const publicRoutes=[['member_password_reset_request','POST','/api/auth/password-reset/request'],['member_password_reset_complete','POST','/api/auth/password-reset/complete'],['invitation_view','GET','/api/invitations/{id}'],['invitation_respond','POST','/api/invitations/{id}/respond'],['invitation_follow','POST','/api/invitations/{id}/follow'],['invitation_setup','POST','/api/invitations/{id}/setup'],['login','POST','/api/auth/login'],['logout','POST','/api/auth/logout'],['profile_json','GET','/api/profile']];
- const memberRoutes=[['member_ledger_summary','GET','/api/member/ledger-summary'],['invitation_send','POST','/api/invitations/send'],['invitation_sent','GET','/api/invitations/sent/{id}'],['content_list','GET','/api/drafts/list'],['content_document','GET','/api/drafts/document/{document_id}'],['content_get','GET','/api/drafts/get/{id}'],['content_create','POST','/api/drafts/create'],['content_update','POST','/api/drafts/update/{id}'],['content_history','GET','/api/drafts/get/{id}/history'],['content_revision','GET','/api/drafts/get/{id}/revisions/{revision_id}'],['content_restore','POST','/api/drafts/get/{id}/restore'],['content_graph','GET','/api/drafts/graph'],['content_work','GET','/api/drafts/get/{id}/work'],['content_record_work','POST','/api/drafts/get/{id}/work'],['content_work_markdown','GET','/api/drafts/get/{id}/work.md']];
+ const shares=new Map();
+ const publicRoutes=[['share_view','GET','/api/shares/{id}'],['share_preview','GET','/api/shares/{id}/preview'],['share_follow','POST','/api/shares/{id}/follow'],['member_password_reset_request','POST','/api/auth/password-reset/request'],['member_password_reset_complete','POST','/api/auth/password-reset/complete'],['invitation_view','GET','/api/invitations/{id}'],['invitation_respond','POST','/api/invitations/{id}/respond'],['invitation_follow','POST','/api/invitations/{id}/follow'],['invitation_setup','POST','/api/invitations/{id}/setup'],['login','POST','/api/auth/login'],['logout','POST','/api/auth/logout'],['profile_json','GET','/api/profile']];
+ const memberRoutes=[['upload','POST','/api/upload'],['share_create','POST','/api/shares/create'],['share_current','GET','/api/shares/document/{id}'],['share_revoke','POST','/api/shares/{id}/revoke'],['member_ledger_summary','GET','/api/member/ledger-summary'],['invitation_send','POST','/api/invitations/send'],['invitation_sent','GET','/api/invitations/sent/{id}'],['content_list','GET','/api/drafts/list'],['content_document','GET','/api/drafts/document/{document_id}'],['content_get','GET','/api/drafts/get/{id}'],['content_create','POST','/api/drafts/create'],['content_update','POST','/api/drafts/update/{id}'],['content_history','GET','/api/drafts/get/{id}/history'],['content_revision','GET','/api/drafts/get/{id}/revisions/{revision_id}'],['content_restore','POST','/api/drafts/get/{id}/restore'],['content_graph','GET','/api/drafts/graph'],['content_work','GET','/api/drafts/get/{id}/work'],['content_record_work','POST','/api/drafts/get/{id}/work'],['content_work_markdown','GET','/api/drafts/get/{id}/work.md']];
  function graph(){const all=[...docs.values()];const edges=[],references=[];for(const doc of all)for(const link of doc.meta?.links||[])for(const target of link.targets){references.push({source:doc.revision.document_id,relation:link.relation,target});if(docs.has(target.document_id))edges.push({id:doc.revision.document_id+target.document_id+link.relation,from:doc.revision.document_id,to:target.document_id,relation:link.relation,source_revision_id:doc.revision.revision_id});}return {nodes:all.map(d=>({id:d.revision.document_id,title:d.title,node_type:d.doc_type,revision_id:d.revision.revision_id})),edges,references,work};}
  return {name:'raft-local-preview-api',apply:'serve',configureServer(server){server.middlewares.use(async(req,res,next)=>{
   if(!req.url?.startsWith('/api/'))return next();const url=new URL(req.url,'http://localhost');let raw='';for await(const chunk of req)raw+=chunk;
   let body={};try{body=raw?JSON.parse(raw):{};}catch{}
   const respond=(value,status=200,type='application/json')=>{res.statusCode=status;res.setHeader('Content-Type',type);res.setHeader('Cache-Control','no-store');res.end(type==='application/json'?JSON.stringify(value):value);};
+  const preview=(item,path)=>{const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const title=escape(item.title),description=escape(item.description||item.body),image=escape(new URL(item.image||'/api/shares/default-photo.jpg','http://'+req.headers.host).href);return respond(`<!doctype html><html><head><title>${title}</title><meta property="og:title" content="${title}"><meta property="og:description" content="${description}"><meta property="og:image" content="${image}"><meta property="og:url" content="${escape('http://'+req.headers.host+url.pathname)}"><meta property="og:type" content="website"><meta name="twitter:card" content="summary_large_image"></head><body><h1>${title}</h1><p>${description}</p><a href="${path}">Open this share</a><script>location.replace(${JSON.stringify(path)}+location.hash)</script></body></html>`,200,'text/html');};
+  if(url.pathname==='/api/shares/default-photo.jpg')return respond(readFileSync(new URL('../static/share-default.jpg',import.meta.url)),200,'image/jpeg');
+  if(url.pathname.startsWith('/api/shares/')&&url.pathname!=='/api/shares/create'&&!url.pathname.startsWith('/api/shares/document/')){
+   const [, , ,id,action]=url.pathname.split('/'),share=shares.get(id);if(!share?.active)return respond({message:'Share not found'},404);
+   if(action==='preview')return preview(share,`/shares/?id=${id}`);
+   if(!action)return respond({...share,is_owner:signedIn,following_requested:false,url:`/api/shares/${id}/preview`});
+   if(!signedIn)return respond({message:'Sign in to continue'},401);
+   if(action==='revoke'){share.active=false;return respond({});}
+   if(action==='follow')return respond({following_requested:true});
+  }
   if(url.pathname==='/api/config/capabilities')return respond([...publicRoutes,...signedIn?memberRoutes:[]].map(([key,method,url])=>({key,method,url,auth:!publicRoutes.some(r=>r[0]===key)})));
   if(url.pathname==='/api/profile')return respond({authenticated:signedIn,user:signedIn?{id:7,display_name:'Jamie Rivers'}:null,roles:signedIn?['member']:[],preview:true});
   if(url.pathname==='/api/auth/login'){signedIn=true;return respond({message:'Signed into local preview'});}
@@ -37,7 +48,8 @@ export function previewApi(){
   if(invitationPath&&invitationPath[1]!=='send'&&invitationPath[1]!=='sent'){
    const invite=invitations.get(invitationPath[1]);if(!invite)return respond({message:'Invitation not found'},404);
    const action=invitationPath[2];
-   if(!action)return respond({...invite,is_recipient:signedIn&&invite.recipient,is_sender:signedIn&&!invite.recipient,status:signedIn&&invite.recipient?invite.status:null});
+   if(action==='share')return preview(invite,`/invitations/?id=${invite.id}`);
+   if(!action)return respond({...invite,image:invite.image||'/api/shares/default-photo.jpg',description:invite.description||invite.body,url:`/api/invitations/${invite.id}/share`,is_recipient:signedIn&&invite.recipient,is_sender:signedIn&&!invite.recipient,status:signedIn&&invite.recipient?invite.status:null});
    if(!signedIn)return respond({message:'Sign in to continue'},401);
    if(action==='follow'){invite.following_requested=true;return respond({following_requested:true});}
    if(action==='respond'&&invite.recipient){
@@ -50,11 +62,14 @@ export function previewApi(){
    return respond({message:'This action is unavailable in the sample workspace'},400);
   }
   if(!signedIn)return respond({message:'Sign in to continue'},401);
+  if(url.pathname==='/api/upload')return respond({url:'/api/shares/default-photo.jpg'});
+  if(url.pathname.startsWith('/api/shares/document/')){const doc=url.pathname.split('/').at(-1);const share=[...shares.values()].find(s=>s.document_id===doc);return respond(share?{...share,followers:[],url:`/api/shares/${share.id}/preview`}:null);}
+  if(url.pathname==='/api/shares/create'){const existing=[...shares.values()].find(s=>s.document_id===body.document_id);const id=existing?.id||randomUUID();shares.set(id,{...body,id,active:true,author:'Jamie Rivers',kind:docs.get(body.document_id)?.doc_type||'experiment'});return respond({id,url:`/api/shares/${id}/preview`});}
   if(url.pathname==='/api/invitations/send'){
    let invite=[...invitations.values()].find(i=>i.email===body.email&&i.document_id===body.document_id);
    if(!invite){const doc=docs.get(body.document_id),experiment=docs.get(body.experiment_id);if(!doc||!experiment)return respond({message:'Save your invitation first'},400);
-    invite={id:randomUUID(),title:experiment.title,body:doc.body_md,sender_name:'Jamie Rivers',recipient:false,status:'pending',email:body.email,document_id:body.document_id,delivery:'sent'};invitations.set(invite.id,invite);}
-   return respond({id:invite.id,url:`/invitations/?id=${invite.id}`,delivery:'sent'});
+    invite={id:randomUUID(),title:experiment.title,body:doc.body_md,sender_name:'Jamie Rivers',recipient:false,status:'pending',email:body.email,document_id:body.document_id,delivery:'sent',image:body.image,description:body.description};invitations.set(invite.id,invite);}
+   return respond({id:invite.id,url:`/api/invitations/${invite.id}/share`,delivery:'sent'});
   }
   if(url.pathname.startsWith('/api/invitations/sent/'))return respond({invitations:[...invitations.values()].filter(i=>i.document_id===url.pathname.split('/').at(-1)),followers:[]});
   if(url.pathname==='/api/member/ledger-summary'){
