@@ -17,3 +17,27 @@
 .share-editor{margin:22px 0 30px}.share-editor>summary{font-size:15px;font-weight:600;cursor:pointer}.share-editor>p{margin-top:16px}.share-editor>.button{margin-top:24px}.share-card{border:1px solid var(--line);border-radius:9px;overflow:hidden;margin:20px 0;background:#fffefa;max-width:560px}.share-card img{display:block;width:100%;aspect-ratio:1.91;object-fit:cover}.share-card>div{padding:18px}.share-card h3{font-size:24px;margin:8px 0}.share-card p{font-size:12px;margin-bottom:0}.share-links{margin:24px 0}.share-links label{font-size:11px;margin-top:12px}.share-links input{font-size:12px}.share-links .row{margin:0}.public-text-preview{margin-top:20px}.public-text-preview summary{font-size:12px;cursor:pointer}.public-text-preview .invitation-body{margin-top:16px}.invitation-photo{display:block;width:100%;aspect-ratio:1.91;object-fit:cover;border-radius:9px;margin-bottom:24px}.invitation-send li{padding:14px 0;border-bottom:1px solid var(--line)}.invitation-send li .share-links{margin:12px 0}.share-editor input[type=file]{font-size:12px}
 
 .invitation-purpose{margin-bottom:24px;padding:20px 24px}.invitation-purpose label{margin-top:0}.invitation-purpose .fine{margin:12px 0 0}
+
+@media (width > 700px) {
+ .sidebar-collapsed > .sidebar { display: none; }
+ .sidebar-collapsed > .app-main { margin-left: 0; width: 100%; }
+}
+
+@media (max-width: 700px) {
+ .desktop-toggle { display: none; }
+}
+
+.experiment-topbar .topbar-context { min-width: 0; }
+.experiment-topbar .topbar-actions { flex-shrink: 0; gap: 8px; }
+.experiment-topbar .private-badge { display: none; }
+.topbar-experiment-title {
+ font-size: clamp(14px, 2vw, 23px);
+ margin: 0;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ white-space: nowrap;
+}
+.main-content.experiment-content { padding-top: 16px; }
+.experiment-content .step-heading { margin-bottom: 12px; }
+.experiment-content .step-heading h2 { margin: 4px 0; }
+.experiment-content .step-heading p { margin: 0; }
