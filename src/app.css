@@ -41,3 +41,10 @@
 .experiment-content .step-heading { margin-bottom: 12px; }
 .experiment-content .step-heading h2 { margin: 4px 0; }
 .experiment-content .step-heading p { margin: 0; }
+
+.action-brain-dump {
+ max-height: 14rem;
+ overflow: auto;
+ overflow-wrap: anywhere;
+ white-space: pre-wrap;
+}

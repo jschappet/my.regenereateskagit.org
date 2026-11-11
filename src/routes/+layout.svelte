@@ -3,7 +3,7 @@
  import '../app.css';import Icon from '$lib/Icon.svelte';import SignIn from '$lib/SignIn.svelte';import CreateDialog from '$lib/CreateDialog.svelte';
  import {documents,session,bootstrap,signOut,message,openCreate,toast,workspaceError,dirtyEditor} from '$lib/workspace';
  let mobile=false,sidebarCollapsed=false,logoutError='';
- const navigation=[{path:'/',label:'My workspace',icon:'home'},{path:'/library/',label:'My library',icon:'library'},{path:'/connections/',label:'Connections',icon:'graph'},{path:'/exports/',label:'Take your work',icon:'download'}];
+ const navigation=[{path:'/',label:'My workspace',icon:'home'},{path:'/feed/',label:'Feed',icon:'clock'},{path:'/library/',label:'My library',icon:'library'},{path:'/connections/',label:'Connections',icon:'graph'},{path:'/exports/',label:'Take your work',icon:'download'}];
  onMount(()=>{void bootstrap();});beforeNavigate(()=>{mobile=false;});
  async function logout(){if($dirtyEditor&&!confirm('Sign out without saving? The local recovery copy will be removed.'))return;logoutError='';try{await signOut();mobile=false;}catch(e){logoutError=message(e);}}
  $: section=navigation.find(n=>n.path==='/'?$page.url.pathname==='/':$page.url.pathname.startsWith(n.path))?.label||($page.url.pathname.startsWith('/ledger')?'Ledger summary':'Experiment workspace');
