@@ -1,11 +1,22 @@
 import {randomUUID} from 'node:crypto';import {readFileSync} from 'node:fs';
+import MarkdownIt from 'markdown-it';
+import {explicitTags,normalizeTags} from '../src/lib/content.mjs';
+const markdown=new MarkdownIt();
+function previewTags(input){
+ const explicit=explicitTags({tags:input.tags,meta:input.meta});
+ const inline=markdown.parse(input.body_md||'',{}).flatMap(token=>token.children??[]);
+ const hashtags=inline.flatMap(token=>token.type==='text'
+  ?Array.from(token.content.matchAll(/(?:^|[\s([{>.,:;!?])#([\p{L}\p{N}][\p{L}\p{N}_-]*)/gu),match=>match[1].replace(/[-_]+$/,''))
+  :[]);
+ return {tags:JSON.stringify(explicit),explicit_tags:explicit,tag_names:normalizeTags([...explicit,...hashtags])};
+}
 const uid=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const copy=value=>JSON.parse(JSON.stringify(value));
 /** @returns {import('vite').Plugin} */
 export function previewApi(){
  let signedIn=true,previewUser=7,nextId=100,version=1000;const docs=new Map(),revisions=new Map(),rowToDocument=new Map();
  const date=new Date();const at=days=>{const d=new Date(date);d.setDate(d.getDate()+days);d.setHours(17,30,0,0);return d.toISOString();};
- function save(input,documentId,previous=null){const id=++nextId;const revision={draft_id:id,document_id:documentId,revision_id:uid(++version),previous_revision_id:previous?.revision.revision_id||null,revision_number:(previous?.revision.revision_number||0)+1,saved_at:new Date().toISOString().slice(0,-1).replace('T',' '),saved_by:7,change_kind:previous?'edit':'create',schema_version:1};const doc={...copy(input),id,status:input.status||'draft',submitted_by:7,author:'Jamie Rivers',revision};docs.set(documentId,doc);rowToDocument.set(id,documentId);revisions.set(documentId,[...(revisions.get(documentId)||[]),copy(doc)]);return doc;}
+ function save(input,documentId,previous=null){const id=++nextId;const revision={draft_id:id,document_id:documentId,revision_id:uid(++version),previous_revision_id:previous?.revision.revision_id||null,revision_number:(previous?.revision.revision_number||0)+1,saved_at:new Date().toISOString().slice(0,-1).replace('T',' '),saved_by:7,change_kind:previous?'edit':'create',schema_version:1};const doc={...copy(input),...previewTags(input),id,status:input.status||'draft',submitted_by:7,author:'Jamie Rivers',revision};docs.set(documentId,doc);rowToDocument.set(id,documentId);revisions.set(documentId,[...(revisions.get(documentId)||[]),copy(doc)]);return doc;}
  const child=(n,type,title,body,parent,meta={})=>save({doc_type:type,title,body_md:body,meta:{workspace_version:1,...meta,links:[{relation:'part_of',targets:[{document_id:uid(parent)}]}]}},uid(n));
  save({doc_type:'interest',title:'What happens to our kitchen scraps?',body_md:'## Interest\n\nI’m curious about the life that begins when we stop calling something waste.\n\n## Why it matters\n\nI’d love our household to put more back into the soil, and less into the bin.',meta:{workspace_version:1}},uid(1));
  save({doc_type:'experiment',title:'A better home for our food scraps',description:'Finding a small, workable compost routine for our kitchen, with a little help from the garden.',body_md:'A two-week experiment in making something useful from what we usually throw away.',meta:{workspace_version:1,links:[{relation:'grew_from',targets:[{document_id:uid(1),title:'What happens to our kitchen scraps?'}]}]}},uid(2));
