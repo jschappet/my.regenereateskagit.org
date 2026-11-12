@@ -12,5 +12,5 @@ test('private original experiments resolve through their public invitation witho
 test('five-tab workflow documents open on the corresponding tab',()=>{
  const parent={...documents[0],meta:{workflow_version:2}};
  const act={...documents[1],doc_type:'act'};
- assert.equal(documentUrl('notes',[parent,act]),'/experiments/?id=experiment&step=act');
+ assert.equal(documentUrl('notes',[parent,act]),'/experiments/?id=experiment&step=act&draft=notes#draft-notes');
 });

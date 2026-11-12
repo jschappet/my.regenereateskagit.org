@@ -1,17 +1,85 @@
 <script lang="ts">
- import {onMount} from 'svelte';import {api,message} from '$lib/workspace';import LedgerGraph from '$lib/LedgerGraph.svelte';import {filterSummary,label} from '$lib/ledger-graph.mjs';
- type Summary={nodes:{id:string;count:number}[];links:{source:string;target:string;relation:string;kind:string;count:number}[];entity_count:number;relationship_count:number;event_count:number};
- let summary:Summary|null=null,loading=true,error='',kind='',focus='',graphVersion=0;
- $: filtered=summary?filterSummary(summary,kind,focus):{nodes:[],links:[]};
- async function load(){loading=true;error='';try{summary=await api.call<Summary>('member_ledger_summary');}catch(e){error=message(e);}finally{loading=false;}}
+ import {onMount} from 'svelte';
+ import {api,documents,graph,message} from '$lib/workspace';
+ import {documentUrl} from '$lib/document-links.mjs';
+ import LedgerGraph from '$lib/LedgerGraph.svelte';
+ import {experimentConnections,relationLabel} from '$lib/ledger-graph.mjs';
+ import type {Graph} from '$lib/types';
+
+ let loading=true, error='', focus='', graphVersion=0;
+ $: connections=experimentConnections($graph,focus);
+ $: nodesById=new Map(connections.nodes.map(node=>[node.id,node]));
+
+ async function load(){
+  loading=true;
+  error='';
+  try{
+   const result=await api.call<Graph>('content_graph');
+   if(!result)throw new Error('The server did not return experiment connections.');
+   if(!result.nodes.some(node=>node.id===focus&&node.node_type==='experiment'))focus='';
+   graph.set(result);
+  }catch(e){error=message(e);}
+  finally{loading=false;}
+ }
  onMount(()=>{void load();});
+
+ function nodeUrl(id:string,docs:typeof $documents,invitationId?:string){
+  return documentUrl(id,docs) ?? (invitationId ? '/invitations/?id='+encodeURIComponent(invitationId) : null);
+ }
 </script>
-<svelte:head><title>Ledger summary · Regenerate Skagit</title></svelte:head>
-<div class="page-heading"><span class="eyebrow">A WIDER VIEW</span><h1>Our connections, in numbers.</h1><p>A summary of the my.regen ledger across this site. Each circle represents a category; lines show counts of connections and activity.</p><p class="fine">Names, email addresses, document titles, and individual records are not included.</p></div>
-{#if error}<p class="alert" role="alert">{error}</p><button class="button" on:click={load}>Try again</button>{/if}
-{#if loading}<p role="status">Loading ledger summary…</p>{:else if summary}
- <div class="ledger-totals"><div class="panel"><strong>{summary.entity_count.toLocaleString()}</strong><span>Ledger entities</span></div><div class="panel"><strong>{summary.relationship_count.toLocaleString()}</strong><span>Connections</span></div><div class="panel"><strong>{summary.event_count.toLocaleString()}</strong><span>Recorded activities</span></div></div>
- <div class="ledger-toolbar"><label for="ledger-kind">Show<select id="ledger-kind" bind:value={kind}><option value="">Connections and activity</option><option value="relationship">Connections</option><option value="event">Activity</option></select></label><label for="ledger-focus">Focus on a category<select id="ledger-focus" bind:value={focus}><option value="">All categories</option>{#each summary.nodes as node}<option value={node.id}>{label(node.id)}</option>{/each}</select></label><button class="button secondary" on:click={()=>graphVersion++}>Reset graph</button><button class="text-button" on:click={load}>Refresh counts</button></div>
- {#if filtered.nodes.length}<div class="panel ledger-stage">{#key graphVersion}<LedgerGraph nodes={filtered.nodes} links={filtered.links}/>{/key}</div><p class="fine">Drag circles to move them; scroll to zoom. Solid lines are connections; dashed lines are recorded activity.</p>{:else}<div class="empty-card"><h2>No records in this view yet.</h2><p>Try another category or return after more activity has been recorded.</p></div>{/if}
- <details class="ledger-tables" open><summary>Counts by category and connection</summary><h2>Categories</h2><div class="ledger-table-wrap"><table><thead><tr><th>Category</th><th>Records</th></tr></thead><tbody>{#each filtered.nodes as node}<tr><td>{label(node.id)}</td><td>{node.count.toLocaleString()}</td></tr>{/each}</tbody></table></div><h2>Connections and activity</h2><div class="ledger-table-wrap"><table><thead><tr><th>From</th><th>Connection</th><th>To</th><th>Count</th></tr></thead><tbody>{#each filtered.links as link}<tr><td>{label(link.source)}</td><td>{label(link.relation)}</td><td>{label(link.target)}</td><td>{link.count.toLocaleString()}</td></tr>{:else}<tr><td colspan="4">No matching connections.</td></tr>{/each}</tbody></table></div></details>
+
+<svelte:head><title>Experiment connections · Regenerate Skagit</title></svelte:head>
+<div class="page-heading">
+ <h1>Experiment connections</h1>
+ <p>See what your experiments grew from and how they connect to other experiments, interests, and stories.</p>
+</div>
+
+{#if error}
+ <p class="alert" role="alert">{error}</p>
+ <button class="button" on:click={load}>Try again</button>
+{:else if loading}
+ <p role="status">Loading experiment connections…</p>
+{:else if connections.experiments.length}
+ <div class="ledger-toolbar">
+  <label>Focus on an experiment
+   <select bind:value={focus}>
+    <option value="">All experiments</option>
+    {#each connections.experiments as experiment (experiment.id)}
+     <option value={experiment.id}>{experiment.title}</option>
+    {/each}
+   </select>
+  </label>
+  <button class="button secondary" on:click={()=>graphVersion++}>Reset graph</button>
+ </div>
+ <div class="panel ledger-stage">
+  {#key graphVersion}<LedgerGraph nodes={connections.nodes} links={connections.links}/>{/key}
+ </div>
+ <p class="fine">Green circles are experiments.{#if $graph.feedback_counts} The number inside a circle is the feedback received for that experiment.{/if} Drag circles to move them, or scroll to zoom.</p>
+ <details class="ledger-tables" open>
+  <summary>Connections</summary>
+  {#if connections.links.length}
+   <div class="ledger-table-wrap">
+    <table>
+     <thead><tr><th scope="col">From</th><th scope="col">Connection</th><th scope="col">To</th></tr></thead>
+     <tbody>
+      {#each connections.links as link}
+       {@const source=nodesById.get(link.source)}
+       {@const target=nodesById.get(link.target)}
+       {@const sourceUrl=nodeUrl(link.source,$documents,source?.invitation_id)}
+       {@const targetUrl=nodeUrl(link.target,$documents,target?.invitation_id)}
+       <tr>
+        <td>{#if sourceUrl}<a href={sourceUrl}>{source?.title}</a>{:else}{source?.title}{/if}</td>
+        <td>{relationLabel(link.relation)}</td>
+        <td>{#if targetUrl}<a href={targetUrl}>{target?.title}</a>{:else}{target?.title}{/if}</td>
+       </tr>
+      {/each}
+     </tbody>
+    </table>
+   </div>
+  {:else}
+   <p>No connections recorded for these experiments yet.</p>
+  {/if}
+ </details>
+{:else}
+ <div class="empty-card"><h2>No experiments yet</h2><a class="button secondary" href="/library/">Visit your library</a></div>
 {/if}

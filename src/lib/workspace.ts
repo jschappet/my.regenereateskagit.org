@@ -1,6 +1,6 @@
 import {writable,get} from 'svelte/store';
 import {api,ApiError} from '@heron/api-client';
-import type {Draft,DraftPayload,Profile,Graph} from './types';
+import type {Draft,DraftPayload,Profile,Graph,Target} from './types';
 import {experimentParent} from './document-links.mjs';
 import {isMapCopy} from './raft-flow.mjs';
 import {sameContent} from './content.mjs';
@@ -12,7 +12,7 @@ export const graph=writable<Graph>({nodes:[],edges:[],references:[],work:[]});
 export const loadingDocuments=writable(false);
 export const workspaceError=writable('');
 export const dirtyEditor=writable(false);
-export const createDialog=writable<{open:boolean;type:string;interestId?:string}>({open:false,type:'experiment'});
+export const createDialog=writable<{open:boolean;type:string;source?:string|Target}>({open:false,type:'experiment'});
 export const toast=writable('');
 let toastTimer:ReturnType<typeof setTimeout>;
 export function notify(message:string){toast.set(message);clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.set(''),4500);}
@@ -64,7 +64,7 @@ export async function saveDocument(payload:DraftPayload,current:Draft|null,id:st
  if(!result)throw new Error('The server did not return the saved document.');upsert(result);return result;
 }
 export function currentUser(){return get(session).profile?.user;}
-export function openCreate(type='experiment',interestId?:string){createDialog.set({open:true,type,interestId});}
+export function openCreate(type='experiment',source?:string|Target){createDialog.set({open:true,type,source});}
 let recovery:ReturnType<typeof createRecovery>|undefined;
 function recoveryStore(){return recovery??=createRecovery(localStorage,sessionStorage,()=>crypto.randomUUID());}
 export function readRecovery(id:string){try{return recoveryStore().read(currentUser()!.id,id);}catch{return null;}}
