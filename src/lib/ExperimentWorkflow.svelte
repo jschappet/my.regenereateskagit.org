@@ -25,14 +25,17 @@
   ['task','I will'], ['when','When'], ['duration','For how long'],
   ['tracking','I’ll keep track by'], ['learning','I’m hoping to notice or find out'],
  ] as const;
- type Plan = {selected:boolean; done:boolean} & Record<typeof planFields[number][0], string>;
+ type Plan = {selected:boolean; done:boolean; reflection:string} & Record<typeof planFields[number][0], string>;
  const prompts = [
   ['What has captivated your attention lately? What draws you in?', 'What draws you in'],
   ["What's something you keep meaning to try?", 'What you’d like to try'],
   ['If you had a free Saturday morning and a friend to help, what would you explore here in Skagit?', 'What you’d explore in Skagit'],
  ];
  const emptyResponse = (): Response => ({sentence:'', notes:''});
- const emptyPlan = (): Plan => ({selected:false,done:false,task:'',when:'',duration:'',tracking:'',learning:''});
+ const emptyPlan = (): Plan => ({selected:false,done:false,task:'',when:'',duration:'',tracking:'',learning:'',reflection:''});
+ const validMinutes = (value:string) => /^[0-9]+$/.test(value) && Number(value)>0 && Number(value)<=4_294_967_295;
+ const planValue = (plan:Plan,key:typeof planFields[number][0]) =>
+  key==='duration'&&validMinutes(plan.duration)?plan.duration+' minutes':plan[key].trim();
  const saved = new Map<string,Draft>([['experiment', parent]]);
  for (const draft of children) {
   if (draft.doc_type==='act' && typeof draft.meta?.brainstorm_item_id==='string') {
@@ -70,9 +73,11 @@
    const plan=plans[item.id];
    if(!plan || (!plan.done && !plan.selected && !planFields.some(([key])=>plan[key].trim())))continue;
    const label=plan.done?'Action taken':plan.selected&&!item.removed?'Planned action':'Earlier plan';
-   paragraphs.push([label+': '+item.title,...planFields
+   const lines=[label+': '+item.title,...planFields
     .filter(([key])=>plan[key].trim())
-    .map(([key,label])=>label+': '+plan[key].trim())].join('  \n'));
+    .map(([key,label])=>label+': '+planValue(plan,key))];
+   if(plan.done&&plan.reflection.trim())lines.push('What I noticed or found out: '+plan.reflection.trim());
+   paragraphs.push(lines.join('  \n'));
   }
   return paragraphs.join('\n\n');
  }
@@ -102,14 +107,16 @@
    const key='act:'+item.id, plan=plans[item.id];
    if(!plan || (!saved.has(key) && samePlan(plan,emptyPlan())))continue;
    const body=[plan.done?'Completed':plan.selected&&!item.removed?'Planned':'Earlier plan',...planFields
-    .filter(([key])=>plan[key].trim()).map(([key,label])=>label+': '+plan[key].trim())].join('\n\n');
-   payloads.set(key,childPayload(key,'act',item.title,body,{brainstorm_item_id:item.id,plan}));
+    .filter(([key])=>plan[key].trim()).map(([key,label])=>label+': '+planValue(plan,key))];
+   if(plan.done&&plan.reflection.trim())body.push('What I noticed or found out: '+plan.reflection.trim());
+   payloads.set(key,childPayload(key,'act',item.title,body.join('\n\n'),{brainstorm_item_id:item.id,plan}));
   }
   payloads.set('story',childPayload('story','story','Story So Far',story,{generated:!storyEdited,workspace_locations:locations}));
   return payloads;
  }
  function samePlan(a:Plan,b:Plan){
-  return a.selected===b.selected && a.done===b.done && planFields.every(([key])=>a[key]===b[key]);
+  return a.selected===b.selected && a.done===b.done && a.reflection===b.reflection
+   && planFields.every(([key])=>a[key]===b[key]);
  }
 
  let baseline=structuredClone(payloads(tags,spark,focus,items,notes,plans,storyEdited?storyText:storyDraft(focus,items,plans),storyEdited,locations));
@@ -181,6 +188,17 @@
  async function save(){
   if(busy||!changed.length)return;
   error='';
+  for(const item of items){
+   const plan=plans[item.id];
+   const previous=baseline.get('act:'+item.id)?.meta?.plan;
+   const completed=plan.done&&!previous?.done;
+   const durationChanged=!!plan.duration&&plan.duration!==previous?.duration;
+   if((completed||durationChanged)&&!validMinutes(plan.duration)){
+    selected='act';
+    error='Enter a duration in whole minutes greater than zero for '+item.title+'.';
+    return;
+   }
+  }
   if(locations.some(location=>!validLocation(location))){
    selected='story';
    error='Complete the location name, street address, city, and state, or clear the location.';
@@ -286,9 +304,20 @@
        <fieldset class="group">
         <legend>Plan for {item.title}</legend>
         {#each planFields as [key,label]}
-         <label>{label}<input bind:value={plans[item.id][key]}/></label>
+         {#if key==='duration'}
+          <label>For how long (minutes)
+           <input type="number" min="1" max="4294967295" step="1"
+            value={plans[item.id].duration}
+            on:input={e=>{plans[item.id].duration=e.currentTarget.value;}}/>
+          </label>
+          {#if plans[item.id].duration&&!validMinutes(plans[item.id].duration)&&plans[item.id].duration===baseline.get('act:'+item.id)?.meta?.plan?.duration}
+           <p class="fine">Earlier duration: {plans[item.id].duration}</p>
+          {/if}
+         {:else}
+          <label>{label}<input bind:value={plans[item.id][key]}/></label>
+         {/if}
         {/each}
-        <p class="fine">Example: I will sit outside and watch birds, Tuesday and Thursday mornings, 15 minutes each, and take notes on what I see.</p>
+        <p class="fine">Example: I will sit outside and watch birds on Tuesday and Thursday mornings for 30 minutes total, and take notes on what I see.</p>
         <label class="choice"><input type="checkbox" bind:checked={plans[item.id].done}/>I did this</label>
        </fieldset>
       {/if}
@@ -302,7 +331,7 @@
        <div class="action"><h3>{item.title}</h3>
         {#if plans[item.id].done}<p>Completed</p>{/if}
         {#each planFields as [key,label]}
-         {#if plans[item.id][key]}<p><strong>{label}</strong> {plans[item.id][key]}</p>{/if}
+         {#if plans[item.id][key]}<p><strong>{label}</strong> {planValue(plans[item.id],key)}</p>{/if}
         {/each}
        </div>
       {/each}
@@ -313,6 +342,21 @@
    <div role="tabpanel" id="panel-story" aria-labelledby="tab-story" tabindex="0" hidden={selected!=='story'}>
     <h2>Story So Far</h2>
     <p>Review and update the story below. We are most interested in how you conducted this experiment.</p>
+    {#each items.filter(item=>plans[item.id].done) as item (item.id)}
+     <fieldset class="group">
+      <legend>{item.title}</legend>
+      {#if plans[item.id].learning.trim()}
+       <p>You were hoping to notice or find out: {plans[item.id].learning}</p>
+       <label>Did you notice or find out what you were hoping to?
+        <textarea rows="3" bind:value={plans[item.id].reflection}></textarea>
+       </label>
+      {:else}
+       <label>What did you notice or find out?
+        <textarea rows="3" bind:value={plans[item.id].reflection}></textarea>
+       </label>
+      {/if}
+     </fieldset>
+    {/each}
     <div class="row between wrap location-summary">
      <div>
       <strong>Location</strong>
