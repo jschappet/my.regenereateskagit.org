@@ -1,5 +1,5 @@
 <script lang="ts">
- import {api,ApiError,documents,loadDocument,message,saveDocument,upsert} from './workspace';
+ import {api,ApiError,documents,loadDocument,message,saveDocument,stableDocumentId,upsert} from './workspace';
  import type {ExperimentLocation} from './experiment-locations';
  import type {Draft} from './types';
  import {mapKey,publicStory} from './raft-flow.mjs';
@@ -39,12 +39,7 @@
   error='';
   try{
    await api.call('experiment_workspace_ready');
-   const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(experimentKey));
-   const bytes=new Uint8Array(hash).slice(0,16);
-   bytes[6]=(bytes[6]&15)|80;
-   bytes[8]=(bytes[8]&63)|128;
-   const hex=Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
-   const id=[hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-');
+   const id=await stableDocumentId(experimentKey);
    const meta={
     journey_version:1,experiment_id:experimentKey,experiment_status:'completed',
     story_exploration:exploration.trim(),story_happened:happened.trim(),story_takeaway:takeaway.trim(),
