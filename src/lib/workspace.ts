@@ -1,6 +1,8 @@
 import {writable,get} from 'svelte/store';
 import {api,ApiError} from '@heron/api-client';
 import type {Draft,DraftPayload,Profile,Graph} from './types';
+import {experimentParent} from './document-links.mjs';
+import {isMapCopy} from './raft-flow.mjs';
 import {sameContent} from './content.mjs';
 import {createRecovery} from './recovery.mjs';
 export {api,ApiError};
@@ -35,7 +37,21 @@ export async function refreshDocuments(){
 }
 export function upsert(draft:Draft){documents.update(all=>[draft,...all.filter(d=>d.revision.document_id!==draft.revision.document_id)]);}
 export async function loadDocument(id:string){const draft=await api.call<Draft>('content_document',{document_id:id});if(!draft)throw new Error('Document not found.');upsert(draft);return draft;}
+export async function stableDocumentId(key:string){
+ const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(key));
+ const bytes=new Uint8Array(hash).slice(0,16);
+ bytes[6]=(bytes[6]&15)|80;
+ bytes[8]=(bytes[8]&63)|128;
+ const hex=Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
+ return [hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-');
+}
 export async function saveDocument(payload:DraftPayload,current:Draft|null,id:string){
+ if(current){
+  const parent=experimentParent(current,get(documents)) as Draft|undefined;
+  if(parent?.meta?.workflow_version!==2&&parent&&!isMapCopy(parent)){
+   throw new Error('Earlier experiments are read-only.');
+  }
+ }
  let result:Draft|null;
  if(current)result=await api.call<Draft>('content_update',{id:current.id},payload,{headers:{'If-Match':`"${current.revision.revision_id}"`}});
  else try{result=await api.call<Draft>('content_create',{}, {...payload,document_id:id});}

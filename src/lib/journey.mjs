@@ -12,7 +12,7 @@ export const steps = [
  {key:'submission',type:'submission',label:'Review your story',short:'Review',intro:'Read through your story and decide what you’re comfortable sharing. Your work stays private until you explicitly share it.',fields:[['Review notes','Anything you want to revise or remember?','You can export your experiment at any point.']]}
 ];
 export const labels = Object.fromEntries(steps.map(s=>[s.type,s.short]));
-labels.experiment='Experiment';labels.idea='Idea';
+Object.assign(labels,{experiment:'Experiment',idea:'Idea',spark:'Spark',focus:'Focus',brainstorm:'Brainstorm',act:'Act'});
 export function linksTo(draft,id,relations=['part_of','reports_on']) {
  return (draft.meta?.links??[]).some(l=>relations.includes(l.relation)&&l.targets.some(t=>t.document_id===id));
 }
@@ -24,6 +24,13 @@ export function experimentDocuments(parent,all) {
 export function stepDocument(parent,all,step) {return experimentDocuments(parent,all).find(d=>d.doc_type===step.type&&!(step.type==='invitation'&&d.meta?.invitation?.purpose));}
 export function phase(parent,all) {
  const children=experimentDocuments(parent,all);
+ if(parent.meta?.workflow_version===2){
+  if(children.some(d=>d.doc_type==='story'))return 'Story So Far';
+  if(children.some(d=>d.doc_type==='act'))return 'Act';
+  if(children.some(d=>d.doc_type==='brainstorm'))return 'Brainstorm';
+  if(children.some(d=>d.doc_type==='focus'))return 'Focus';
+  return 'Spark';
+ }
  if(children.some(d=>d.doc_type==='story'))return 'Story';
  if(children.some(d=>d.doc_type==='action'))return 'Action';
  if(children.some(d=>d.doc_type==='experiment_start'&&d.meta?.started_at))return 'Exploration';

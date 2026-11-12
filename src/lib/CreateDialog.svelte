@@ -8,7 +8,7 @@
  function close(){if(!busy)createDialog.set({open:false,type:'experiment'});}
  async function create(){busy=true;error='';try{
   const interest=$documents.find(d=>d.revision.document_id===interestId);const id=newId;
-  const meta={workspace_version:1,links:type==='experiment'&&interest?[{relation:'grew_from',targets:[{document_id:interest.revision.document_id,title:interest.title}]}]:[]};
+  const meta={workspace_version:1,...(type==='experiment'?{workflow_version:2}:{}),links:type==='experiment'&&interest?[{relation:'grew_from',targets:[{document_id:interest.revision.document_id,title:interest.title}]}]:[]};
   await saveDocument({doc_type:type,title:title.trim(),body_md:'',tags:JSON.stringify(tags),meta},null,id);
   createDialog.set({open:false,type});notify(type==='experiment'?'An experiment is taking shape.':'Your new draft is ready.');
   await goto(type==='experiment'?`/experiments/?id=${id}`:`/documents/?id=${id}`);
