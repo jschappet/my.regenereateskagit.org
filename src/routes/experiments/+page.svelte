@@ -3,6 +3,7 @@
  import {isMapCopy} from '$lib/raft-flow.mjs';
  import {documents, loadingDocuments, openCreate, dirtyEditor} from '$lib/workspace';
  import {experimentDocuments} from '$lib/journey.mjs';
+ import ExperimentMap from '$lib/ExperimentMap.svelte';
  import ExperimentCard from '$lib/ExperimentCard.svelte';
  import ExperimentWorkflow from '$lib/ExperimentWorkflow.svelte';
  import ReadOnlyDraft from '$lib/ReadOnlyDraft.svelte';
@@ -19,6 +20,7 @@
   }
   invitationMode=select.value;
  }
+ $: experiments=$documents.filter(draft=>draft.doc_type==='experiment'&&!isMapCopy(draft));
  $: id=$page.url.searchParams.get('id')||'';
  $: parent=$documents.find(draft=>draft.revision.document_id===id&&draft.doc_type==='experiment');
  $: children=parent?experimentDocuments(parent,$documents) as Draft[]:[];
@@ -26,9 +28,10 @@
 </script>
 
 {#if !id}
+ <ExperimentMap {experiments}/>
  <div class="page-heading"><h1>Your experiments</h1></div>
  <div class="experiment-grid">
-  {#each $documents.filter(draft=>draft.doc_type==='experiment'&&!isMapCopy(draft)) as experiment,index}
+  {#each experiments as experiment,index (experiment.revision.document_id)}
    <ExperimentCard {experiment} {index}/>
   {:else}
    <button class="button primary" on:click={()=>openCreate()}>Start an experiment</button>
@@ -47,6 +50,9 @@
       open={draft===parent||$page.url.searchParams.get('draft')===draft.revision.document_id}>
       <summary>{draft.title} · {draft.doc_type.replaceAll('_',' ')}</summary>
       <ReadOnlyDraft {draft}/>
+     {#if ['action','act'].includes(draft.doc_type)}
+      <button type="button" class="text-button" on:click={()=>openCreate('experiment',draft.revision.document_id)}>Start an experiment from this action</button>
+     {/if}
      </details>
     {/each}
    </section>

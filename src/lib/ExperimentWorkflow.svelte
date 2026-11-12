@@ -3,9 +3,11 @@
  import {beforeNavigate} from '$app/navigation';
  import {page} from '$app/stores';
  import {draftTags, explicitTags, sameContent} from './content.mjs';
- import {dirtyEditor, message, notify, saveDocument, stableDocumentId} from './workspace';
+ import {dirtyEditor, documents, message, notify, openCreate, saveDocument, stableDocumentId} from './workspace';
  import {locationsFor, newLocation, validLocation, type ExperimentLocation} from './experiment-locations';
+ import {findSkagitAddress} from './skagit-address.mjs';
  import MapSubmission from './MapSubmission.svelte';
+ import {referenceUrl} from './document-links.mjs';
  import ReadOnlyDraft from './ReadOnlyDraft.svelte';
  import TagEditor from './TagEditor.svelte';
  import type {Draft, DraftPayload} from './types';
@@ -61,8 +63,7 @@
  let locations:ExperimentLocation[]=saved.has('story')?structuredClone(locationsFor(saved.get('story')!)):[];
  let locationDialog:HTMLDialogElement;
  let locationDraft:ExperimentLocation|undefined;
- let locationError='';
- $: location=locations[0];
+ let locationError='', locating=false, locationLookupFailed=false, locationIndex=-1;
  let newItem='', editing='', revisedTitle='', error='', busy=false;
 
  function storyDraft(focus:Response, items:Item[], plans:Record<string,Plan>){
@@ -164,25 +165,45 @@
    :items.filter(item=>item.id!==id);
   if(editing===id)editing='';
  }
- async function openLocation(){
-  locationDraft=location?{...location}:newLocation();
+ async function openLocation(index=-1){
+  locationIndex=index;
+  locationDraft=index>=0?{...locations[index]}:newLocation();
   locationError='';
+  locationLookupFailed=false;
   await tick();
   if(!locationDialog.open)locationDialog.showModal();
  }
- function applyLocation(){
-  if(!locationDraft)return;
+ async function applyLocation(skipLookup=false){
+  if(!locationDraft||locating)return;
+  locationError='';
+  locationLookupFailed=false;
   const next={...locationDraft,name:locationDraft.name.trim(),address:locationDraft.address.trim(),
    city:locationDraft.city.trim(),state:locationDraft.state.trim()};
   if(!validLocation(next)){
-   locationError='Enter a place name, street address, city, and state.';
+   locationError='Enter a place name, street address, and city and state. Coordinates must be within range.';
    return;
   }
-  locations=[next,...locations.slice(1)];
+  const previous=locations[locationIndex];
+  if(previous&&next.latitude===previous.latitude&&next.longitude===previous.longitude
+    &&(['address','city','state'] as const).some(key=>next[key].toLowerCase()!==previous[key].trim().toLowerCase())){
+   next.latitude=null;
+   next.longitude=null;
+  }
+  if((next.latitude===null)!==(next.longitude===null)){
+   locationError='Enter both latitude and longitude to show this location on your map.';
+   return;
+  }
+  if(next.latitude===null&&!skipLookup){
+   locating=true;
+   try{Object.assign(next,await findSkagitAddress(next));}
+   catch(reason){locationError=message(reason);locationLookupFailed=true;return;}
+   finally{locating=false;}
+  }
+  locations=locationIndex<0?[...locations,next]:locations.map((location,index)=>index===locationIndex?next:location);
   locationDialog.close();
  }
  function clearLocation(){
-  locations=locations.slice(1);
+  locations=locations.filter((_,index)=>index!==locationIndex);
   locationDialog.close();
  }
  async function save(){
@@ -218,9 +239,8 @@
   }catch(e){error=message(e);}
   finally{baseline=nextBaseline;busy=false;}
  }
- $: sourceIds=new Set((parent.meta?.links??[]).filter(link=>link.relation==='grew_from')
-  .flatMap(link=>link.targets.map(target=>target.document_id)));
- $: sources=children.filter(child=>sourceIds.has(child.revision.document_id));
+ $: sources=(parent.meta?.links??[]).filter(link=>link.relation==='grew_from').flatMap(link=>link.targets);
+ $: savedActs=new Map(children.filter(child=>child.doc_type==='act').map(child=>[child.meta?.brainstorm_item_id,child]));
  $: savedStory=children.find(child=>child.doc_type==='story');
  $: activeItems=items.filter(item=>!item.removed);
  $: archivedItems=items.filter(item=>item.removed);
@@ -240,8 +260,16 @@
   <fieldset class="panel editor-panel" disabled={busy}>
    <div role="tabpanel" id="panel-spark" aria-labelledby="tab-spark" tabindex="0" hidden={selected!=='spark'}>
     <p>Let your attention wander. There are no wrong answers, and a small or odd answer is a good one.</p>
-    {#each sources as source (source.revision.document_id)}
-     <details class="legacy-notebook"><summary>Starting point · {source.title}</summary><ReadOnlyDraft draft={source}/></details>
+    {#each sources as source}
+     {@const draft=$documents.find(doc=>doc.revision.document_id===source.document_id)}
+     {@const href=referenceUrl(source,$documents)}
+     {#if draft}
+      <details class="legacy-notebook"><summary>Starting point · {draft.title}</summary><ReadOnlyDraft {draft}/></details>
+     {:else if href}
+      <p>Starting point · <a class="text-link" href={href}>{source.title||source.url||'View source'}</a></p>
+     {:else if source.title}
+      <p>Starting point · {source.title}</p>
+     {/if}
     {/each}
     {#each prompts as [prompt],index}
      <fieldset class="group">
@@ -298,7 +326,8 @@
     {#if focus.notes}<p class="notes">{focus.notes}</p>{/if}
     <p>Here’s your brainstorm list. If you want to add, remove, or change anything, go back to the Brainstorm tab. Then check the ones you’ll do this week.</p>
     {#each activeItems as item (item.id)}
-     <div class="action">
+     {@const savedAct=savedActs.get(item.id)}
+     <div class="action" id={savedAct?'draft-'+savedAct.revision.document_id:undefined}>
       <label class="choice"><input type="checkbox" bind:checked={plans[item.id].selected}/>{item.title}</label>
       {#if plans[item.id].selected||plans[item.id].done}
        <fieldset class="group">
@@ -319,6 +348,9 @@
         {/each}
         <p class="fine">Example: I will sit outside and watch birds on Tuesday and Thursday mornings for 30 minutes total, and take notes on what I see.</p>
         <label class="choice"><input type="checkbox" bind:checked={plans[item.id].done}/>I did this</label>
+        {#if savedAct}
+         <button type="button" class="text-button" on:click={()=>openCreate('experiment',savedAct.revision.document_id)}>Start an experiment from this action</button>
+        {/if}
        </fieldset>
       {/if}
      </div>
@@ -357,16 +389,17 @@
       {/if}
      </fieldset>
     {/each}
-    <div class="row between wrap location-summary">
-     <div>
-      <strong>Location</strong>
-      {#if location}
-       <p>{location.name} · {[location.address,location.city,location.state].filter(Boolean).join(', ')}</p>
-      {/if}
+    <div class="location-summary">
+     <div class="row between wrap">
+      <strong>Locations</strong>
+      <button type="button" class="button secondary" aria-haspopup="dialog" on:click={()=>openLocation()}>Add location</button>
      </div>
-     <button type="button" class="button secondary" aria-haspopup="dialog" on:click={openLocation}>
-      {location?'Edit location':'Add location'}
-     </button>
+     {#each locations as location,index (location.id)}
+      <div class="row between wrap">
+       <p>{location.name} · {[location.address,location.city,location.state].filter(Boolean).join(', ')}</p>
+       <button type="button" class="text-button" aria-haspopup="dialog" on:click={()=>openLocation(index)}>Edit location</button>
+      </div>
+     {/each}
     </div>
     <label>Story<textarea rows="14" value={story} on:input={e=>{storyText=e.currentTarget.value;storyEdited=true;}}></textarea></label>
    </div>
@@ -417,21 +450,31 @@
  </aside>
 </div>
 
-<dialog class="modal" bind:this={locationDialog} aria-labelledby="story-location-title">
+<dialog class="modal" bind:this={locationDialog} aria-labelledby="story-location-title" on:cancel={event=>{if(locating)event.preventDefault();}}>
  {#if locationDraft}
-  <form on:submit|preventDefault={applyLocation}>
-   <h2 id="story-location-title">{location?'Edit location':'Add location'}</h2>
+  <form on:submit|preventDefault={()=>applyLocation()}>
+   <h2 id="story-location-title">{locationIndex>=0?'Edit location':'Add location'}</h2>
+   <fieldset class="location-fields" disabled={locating}>
    <label>Street address<input autocomplete="street-address" bind:value={locationDraft.address} required/></label>
    <div class="date-grid">
     <label>City<input autocomplete="address-level2" bind:value={locationDraft.city} required/></label>
     <label>State<input autocomplete="address-level1" bind:value={locationDraft.state} required/></label>
    </div>
    <label>Place name<input bind:value={locationDraft.name} required/></label>
+   <p class="fine">When you apply an address without coordinates, Heron sends the street number and city to Skagit County to look up a match.</p>
+   <div class="date-grid">
+    <label>Latitude (optional)<input type="number" min="-90" max="90" step="any" value={locationDraft.latitude??''}
+     on:input={event=>{if(locationDraft)locationDraft.latitude=event.currentTarget.value===''?null:event.currentTarget.valueAsNumber;}}/></label>
+    <label>Longitude (optional)<input type="number" min="-180" max="180" step="any" value={locationDraft.longitude??''}
+     on:input={event=>{if(locationDraft)locationDraft.longitude=event.currentTarget.value===''?null:event.currentTarget.valueAsNumber;}}/></label>
+   </div>
+   </fieldset>
    {#if locationError}<p class="alert" role="alert">{locationError}</p>{/if}
    <div class="row wrap location-actions">
-    <button type="submit" class="button primary">Apply location</button>
-    <button type="button" class="button secondary" on:click={()=>locationDialog.close()}>Cancel</button>
-    {#if location}<button type="button" class="text-button" on:click={clearLocation}>Clear location</button>{/if}
+    <button type="submit" class="button primary" disabled={locating}>{locating?'Finding address…':'Apply location'}</button>
+    <button type="button" class="button secondary" disabled={locating} on:click={()=>locationDialog.close()}>Cancel</button>
+    {#if locationLookupFailed}<button type="button" class="text-button" on:click={()=>applyLocation(true)}>Apply without a pin</button>{/if}
+    {#if locationIndex>=0}<button type="button" class="text-button" disabled={locating} on:click={clearLocation}>Clear location</button>{/if}
    </div>
   </form>
  {/if}
@@ -453,6 +496,7 @@
  .action .group .choice{margin-top:14px}
  .notes{white-space:pre-wrap;overflow-wrap:anywhere}
  .save-row{margin-top:14px}
+ .location-fields{border:0;margin:0;padding:0;min-width:0}
  .location-summary,.location-actions{margin-top:18px}
  .location-summary p{margin:4px 0 0;overflow-wrap:anywhere}
  @media(max-width:950px){.workflow{grid-template-columns:1fr}}

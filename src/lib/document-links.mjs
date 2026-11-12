@@ -16,12 +16,19 @@ export function documentUrl(id,documents){
   const root=encodeURIComponent(parent.revision.document_id);
   if(parent.meta?.workflow_version!==2)return `/experiments/?id=${root}&draft=${encodeURIComponent(id)}`;
   const steps={spark:'spark',focus:'focus',brainstorm:'brainstorm',act:'act',story:'story'};
+  if(doc.doc_type==='act')return `/experiments/?id=${root}&step=act&draft=${encodeURIComponent(id)}#draft-${encodeURIComponent(id)}`;
   if(steps[doc.doc_type])return `/experiments/?id=${root}&step=${steps[doc.doc_type]}`;
  }
  return `/documents/?id=${encodeURIComponent(id)}`;
 }
 export function referenceUrl(target,documents){
- if(target.document_id)return documentUrl(target.document_id,documents)||(target.invitation_id?`/invitations/?id=${encodeURIComponent(target.invitation_id)}`:null);
+ if(target.document_id){
+  const own=documentUrl(target.document_id,documents);
+  if(own)return own;
+  if(target.invitation_id)return `/invitations/?id=${encodeURIComponent(target.invitation_id)}`;
+  if(target.viewer_id)return `/view/?id=${encodeURIComponent(target.viewer_id)}#section-${encodeURIComponent(target.document_id)}`;
+  return null;
+ }
  if(target.url){try{const url=new URL(target.url);if(['https:','http:'].includes(url.protocol))return url.href;}catch{}}
  return null;
 }

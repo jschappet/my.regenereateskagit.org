@@ -1,10 +1,13 @@
 <script lang="ts">
  import {isMapCopy} from '$lib/raft-flow.mjs';
  import {documents,openCreate} from '$lib/workspace';
+ import ExperimentMap from '$lib/ExperimentMap.svelte';
  import ExperimentCard from '$lib/ExperimentCard.svelte';
 
  $: experiments=$documents.filter(document=>document.doc_type==='experiment'&&!isMapCopy(document));
 </script>
+
+<ExperimentMap {experiments}/>
 
 <div class="section-heading">
  <h1>Your experiments</h1>
