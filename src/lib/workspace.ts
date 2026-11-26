@@ -7,6 +7,7 @@ import {sameContent} from './content.mjs';
 import {createRecovery} from './recovery.mjs';
 export {api,ApiError};
 export const session=writable<{loading:boolean;profile:Profile|null;error:string}>({loading:true,profile:null,error:''});
+export const collaborations=writable<{document_id:string;title:string}[]>([]);
 export const documents=writable<Draft[]>([]);
 export const graph=writable<Graph>({nodes:[],edges:[],references:[],work:[]});
 export const loadingDocuments=writable(false);
@@ -30,7 +31,13 @@ export async function refreshDocuments(){
  loadingDocuments.set(true);workspaceError.set('');
  try{
   if(!await api.has('content_document'))throw new Error('This workspace needs the updated Heron document API. Your saved work is unchanged.');
-  const [list,connections]=await Promise.all([api.call<{drafts:Draft[]}>('content_list',{mine:true}),api.call<Graph>('content_graph')]);
+  const [list,connections,shared]=await Promise.all([
+   api.call<{drafts:Draft[]}>('content_list',{mine:true}),
+   api.call<Graph>('content_graph'),
+   api.has('experiment_collaborations').then(available=>available
+    ?api.call<{document_id:string;title:string}[]>('experiment_collaborations'):[]),
+  ]);
+  collaborations.set(shared??[]);
   documents.set(list?.drafts??[]);if(connections)graph.set(connections);
  }catch(error){workspaceError.set(message(error));throw error;}
  finally{loadingDocuments.set(false);}
@@ -72,5 +79,5 @@ export function writeRecovery(id:string,data:unknown){try{return recoveryStore()
 export function clearRecovery(id:string,source?:string){try{recoveryStore().clear(currentUser()!.id,id,source);}catch{}}
 export async function signOut(){
  await api.call('logout');
- const user=currentUser();try{if(user)recoveryStore().clearUser(user.id);localStorage.removeItem('auth_token');}catch{/* Storage can be unavailable; the server session is already closed. */}api.invalidateCapabilities();documents.set([]);graph.set({nodes:[],edges:[],references:[],work:[]});session.set({loading:false,profile:null,error:''});
+ const user=currentUser();try{if(user)recoveryStore().clearUser(user.id);localStorage.removeItem('auth_token');}catch{/* Storage can be unavailable; the server session is already closed. */}api.invalidateCapabilities();collaborations.set([]);documents.set([]);graph.set({nodes:[],edges:[],references:[],work:[]});session.set({loading:false,profile:null,error:''});
 }

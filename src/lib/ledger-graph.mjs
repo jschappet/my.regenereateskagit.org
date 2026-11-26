@@ -12,7 +12,9 @@ export function experimentConnections(graph,focus=''){
    : node,
  ]));
  const experiments=[...nodes.values()].filter(node=>node.node_type==='experiment');
+ const ideas=[...nodes.values()].filter(node=>node.node_type==='idea');
  const experimentIds=new Set(experiments.map(node=>node.id));
+ const startingIds=new Set([...experimentIds,...ideas.map(node=>node.id)]);
  const links=graph.edges.map(edge=>({source:edge.from,target:edge.to,relation:edge.relation}));
  for(const {source,relation,target} of graph.references){
   if(!experimentIds.has(source)||!target.document_id||!target.invitation_id)continue;
@@ -24,22 +26,45 @@ export function experimentConnections(graph,focus=''){
   }
   links.push({source,target:target.document_id,relation});
  }
+ const cascadeLinks=new Set();
+ if(nodes.get(focus)?.node_type==='idea'){
+  const descendants=new Map();
+  for(const link of links){
+   if(nodes.get(link.source)?.node_type!=='experiment'||!['grew_from','part_of'].includes(link.relation))continue;
+   if(!descendants.has(link.target))descendants.set(link.target,[]);
+   descendants.get(link.target).push(link);
+  }
+  const visited=new Set([focus]);
+  let level=[focus];
+  for(let depth=0;depth<3&&level.length;depth++){
+   const next=[];
+   for(const id of level){
+    for(const link of descendants.get(id)??[]){
+     cascadeLinks.add(link);
+     if(visited.has(link.source))continue;
+     visited.add(link.source);
+     next.push(link.source);
+    }
+   }
+   level=next;
+  }
+ }
  const seen=new Set();
  const visibleLinks=links.filter(link=>{
   if(!nodes.has(link.source)||!nodes.has(link.target))return false;
-  if(focus ? link.source!==focus&&link.target!==focus
-   : !experimentIds.has(link.source)&&!experimentIds.has(link.target))return false;
+  if(focus ? link.source!==focus&&link.target!==focus&&!cascadeLinks.has(link)
+   : !startingIds.has(link.source)&&!startingIds.has(link.target))return false;
   const key=JSON.stringify([link.source,link.target,link.relation]);
   if(seen.has(key))return false;
   seen.add(key);
   return true;
  });
- const ids=new Set(focus?[focus]:experimentIds);
+ const ids=new Set(focus?[focus]:startingIds);
  for(const link of visibleLinks){
   ids.add(link.source);
   ids.add(link.target);
  }
- return {experiments,nodes:[...nodes.values()].filter(node=>ids.has(node.id)),links:visibleLinks};
+ return {experiments,ideas,nodes:[...nodes.values()].filter(node=>ids.has(node.id)),links:visibleLinks};
 }
 
 export function feedbackLabel(count){

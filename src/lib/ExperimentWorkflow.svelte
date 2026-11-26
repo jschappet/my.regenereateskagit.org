@@ -3,26 +3,29 @@
  import {beforeNavigate} from '$app/navigation';
  import {page} from '$app/stores';
  import {draftTags, explicitTags, sameContent} from './content.mjs';
- import {dirtyEditor, documents, message, notify, openCreate, saveDocument, stableDocumentId} from './workspace';
+ import {dirtyEditor, documents, message, notify, openCreate, saveDocument, session, stableDocumentId} from './workspace';
  import {locationsFor, newLocation, validLocation, type ExperimentLocation} from './experiment-locations';
  import {findSkagitAddress} from './skagit-address.mjs';
  import MapSubmission from './MapSubmission.svelte';
+ import ActionDialog from './ActionDialog.svelte';
+ import {todoActions} from './todo-actions';
+ import {experimentStartingPoint} from './idea.mjs';
  import {referenceUrl} from './document-links.mjs';
  import ReadOnlyDraft from './ReadOnlyDraft.svelte';
  import TagEditor from './TagEditor.svelte';
+ import type {BrainstormItem} from './todo-actions';
  import type {Draft, DraftPayload} from './types';
 
  export let parent: Draft;
  export let children: Draft[];
 
  const tabs = [
-  {key:'spark', label:'Spark'}, {key:'focus', label:'Focus'},
-  {key:'brainstorm', label:'Brainstorm'}, {key:'act', label:'Act'},
+  {key:'act', label:'Act'},
   {key:'story', label:'Story So Far'},
  ] as const;
  type Tab = typeof tabs[number]['key'];
  type Response = {sentence:string; notes:string};
- type Item = {id:string; title:string; removed?:boolean};
+ type Item = BrainstormItem;
  const planFields = [
   ['task','I will'], ['when','When'], ['duration','For how long'],
   ['tracking','I’ll keep track by'], ['learning','I’m hoping to notice or find out'],
@@ -42,17 +45,24 @@
  for (const draft of children) {
   if (draft.doc_type==='act' && typeof draft.meta?.brainstorm_item_id==='string') {
    saved.set('act:'+draft.meta.brainstorm_item_id,draft);
-  } else if (tabs.some(tab=>tab.key===draft.doc_type)) {
+  } else if (['spark','focus','brainstorm'].includes(draft.doc_type)||tabs.some(tab=>tab.key===draft.doc_type)) {
    saved.set(draft.doc_type,draft);
   }
  }
 
  const parentId=parent.revision.document_id;
- let selected:Tab=tabs.find(tab=>tab.key===$page.url.searchParams.get('step'))?.key??'spark';
+ let selected:Tab=tabs.find(tab=>tab.key===$page.url.searchParams.get('step'))?.key??'act';
+ let actionDialog:ActionDialog;
+ let editActionDialog:HTMLDialogElement;
  let tabButtons:HTMLButtonElement[]=[];
  let tags:string[]=explicitTags(parent);
- let spark:Response[]=prompts.map((_,index)=>({...emptyResponse(),...saved.get('spark')?.meta?.responses?.[index]}));
- let focus:Response={...emptyResponse(),...saved.get('focus')?.meta?.response};
+ $: userId = $session.profile?.user?.id;
+ $: availableTags = $documents
+  .filter(draft => draft.submitted_by === userId)
+  .flatMap(draftTags);
+ $: idea=experimentStartingPoint(parent,$documents);
+ $: spark=prompts.map((_,index)=>({...emptyResponse(),...(idea?.meta?.spark?.[index]??saved.get('spark')?.meta?.responses?.[index])}));
+ $: focus={...emptyResponse(),...(idea?.meta?.focus??saved.get('focus')?.meta?.response)} as Response;
  let items:Item[]=structuredClone(saved.get('brainstorm')?.meta?.items??[]);
  let notes=saved.get('brainstorm')?.meta?.notes??saved.get('brainstorm')?.body_md??'';
  let plans:Record<string,Plan>=Object.fromEntries(items.map(item=>[
@@ -64,7 +74,7 @@
  let locationDialog:HTMLDialogElement;
  let locationDraft:ExperimentLocation|undefined;
  let locationError='', locating=false, locationLookupFailed=false, locationIndex=-1;
- let newItem='', editing='', revisedTitle='', error='', busy=false;
+ let newItem='', editing='', revisedTitle='', itemDescription='', itemTags='', itemMinutes='', error='', busy=false;
 
  function storyDraft(focus:Response, items:Item[], plans:Record<string,Plan>){
   const paragraphs=[];
@@ -91,7 +101,7 @@
  function responseBody(response:Response){
   return [response.sentence.trim(),response.notes.trim()].filter(Boolean).join('\n\n');
  }
- function payloads(tags:string[],spark:Response[],focus:Response,items:Item[],notes:string,plans:Record<string,Plan>,
+ function payloads(tags:string[],items:Item[],notes:string,plans:Record<string,Plan>,
    story:string,storyEdited:boolean,locations:ExperimentLocation[]){
   const root=saved.get('experiment')!;
   const brainstormBody=[items.filter(item=>!item.removed).map(item=>'- '+item.title).join('\n'),notes.trim()]
@@ -99,9 +109,6 @@
   const payloads=new Map<string,DraftPayload>([
    ['experiment',{doc_type:root.doc_type,title:root.title,body_md:root.body_md,
     description:root.description,details:root.details,meta:root.meta,tags:JSON.stringify(tags)}],
-   ['spark',childPayload('spark','spark','Spark',spark.flatMap((response,index)=>
-    responseBody(response)?['## '+prompts[index][1]+'\n\n'+responseBody(response)]:[]).join('\n\n'),{responses:spark})],
-   ['focus',childPayload('focus','focus','Focus',responseBody(focus),{response:focus})],
    ['brainstorm',childPayload('brainstorm','brainstorm','Brainstorm',brainstormBody,{items,notes})],
   ]);
   for(const item of items){
@@ -120,10 +127,11 @@
    && planFields.every(([key])=>a[key]===b[key]);
  }
 
- let baseline=structuredClone(payloads(tags,spark,focus,items,notes,plans,storyEdited?storyText:storyDraft(focus,items,plans),storyEdited,locations));
+ const initialFocus={...emptyResponse(),...(experimentStartingPoint(parent,$documents)?.meta?.focus??saved.get('focus')?.meta?.response)};
+ let baseline=structuredClone(payloads(tags,items,notes,plans,storyEdited?storyText:storyDraft(initialFocus,items,plans),storyEdited,locations));
  $: draftStory=storyDraft(focus,items,plans);
  $: story=storyEdited?storyText:draftStory;
- $: updates=payloads(tags,spark,focus,items,notes,plans,story,storyEdited,locations);
+ $: updates=payloads(tags,items,notes,plans,story,storyEdited,locations);
  $: changed=[...updates].filter(([key,payload])=>{
   const previous=baseline.get(key);
   return !previous||!sameContent(previous,payload);
@@ -144,19 +152,32 @@
   chooseTab(tabs[target].key);
   tabButtons[target]?.focus();
  }
- function addItem(){
+ async function addItem(){
   const title=newItem.trim();
-  if(!title)return;
+  if(!title||editing||busy)return;
   const id=crypto.randomUUID();
   items=[...items,{id,title}];
   plans={...plans,[id]:emptyPlan()};
   newItem='';
+  await tick();
+  await save();
+ }
+ async function editItem(item:Item){
+  editing=item.id;
+  revisedTitle=item.title;
+  itemDescription=item.description??'';
+  itemTags=(item.tags??[]).join(', ');
+  itemMinutes=String(item.expected_minutes??'');
+  await tick();
+  editActionDialog.showModal();
  }
  function renameItem(id:string){
   const title=revisedTitle.trim();
   if(!title)return;
-  items=items.map(item=>item.id===id?{...item,title}:item);
-  editing='';
+  items=items.map(item=>item.id===id?{...item,title,description:itemDescription.trim(),
+   tags:itemTags.split(',').map(tag=>tag.trim().replace(/^#+/,'')).filter(Boolean),
+   expected_minutes:itemMinutes?Number(itemMinutes):undefined}:item);
+  editActionDialog.close();
  }
  function removeItem(id:string){
   const plan=plans[id];
@@ -207,7 +228,8 @@
   locationDialog.close();
  }
  async function save(){
-  if(busy||!changed.length)return;
+  if(busy)return false;
+  if(!changed.length)return true;
   error='';
   for(const item of items){
    const plan=plans[item.id];
@@ -217,13 +239,13 @@
    if((completed||durationChanged)&&!validMinutes(plan.duration)){
     selected='act';
     error='Enter a duration in whole minutes greater than zero for '+item.title+'.';
-    return;
+    return false;
    }
   }
   if(locations.some(location=>!validLocation(location))){
    selected='story';
    error='Complete the location name, street address, city, and state, or clear the location.';
-   return;
+   return false;
   }
   busy=true;
   let nextBaseline=new Map(baseline);
@@ -236,8 +258,32 @@
     nextBaseline.set(key,structuredClone(payload));
    }
    notify('Experiment saved.');
-  }catch(e){error=message(e);}
+   return true;
+  }catch(e){error=message(e);return false;}
   finally{baseline=nextBaseline;busy=false;}
+ }
+ async function openAction(id:string,mode:'share'|'complete'|'transfer'){
+  if(!await save())return;
+  const todo=todoActions([parent],$documents).find(action=>action.item.id===id);
+  if(todo)actionDialog.open(todo,mode);
+  else error='This action could not be loaded. Refresh the experiment and try again.';
+ }
+
+ async function syncActions(){
+  await tick();
+  const brainstorm=children.find(draft=>draft.doc_type==='brainstorm');
+  if(brainstorm)saved.set('brainstorm',brainstorm);
+  items=structuredClone(brainstorm?.meta?.items??[]);
+  for(const key of saved.keys())if(key.startsWith('act:'))saved.delete(key);
+  for(const draft of children){
+   if(draft.doc_type==='act'&&typeof draft.meta?.brainstorm_item_id==='string'){
+    saved.set('act:'+draft.meta.brainstorm_item_id,draft);
+   }
+  }
+  plans=Object.fromEntries(items.map(item=>[item.id,{...emptyPlan(),...saved.get('act:'+item.id)?.meta?.plan}]));
+  const previousStory=baseline.get('story');
+  baseline=structuredClone(payloads(tags,items,notes,plans,story,storyEdited,locations));
+  if(previousStory)baseline.set('story',previousStory);
  }
  $: sources=(parent.meta?.links??[]).filter(link=>link.relation==='grew_from').flatMap(link=>link.targets);
  $: savedActs=new Map(children.filter(child=>child.doc_type==='act').map(child=>[child.meta?.brainstorm_item_id,child]));
@@ -258,8 +304,7 @@
   </div>
 
   <fieldset class="panel editor-panel" disabled={busy}>
-   <div role="tabpanel" id="panel-spark" aria-labelledby="tab-spark" tabindex="0" hidden={selected!=='spark'}>
-    <p>Let your attention wander. There are no wrong answers, and a small or odd answer is a good one.</p>
+   <div role="tabpanel" id="panel-act" aria-labelledby="tab-act" tabindex="0" hidden={selected!=='act'}>
     {#each sources as source}
      {@const draft=$documents.find(doc=>doc.revision.document_id===source.document_id)}
      {@const href=referenceUrl(source,$documents)}
@@ -271,64 +316,20 @@
       <p>Starting point · {source.title}</p>
      {/if}
     {/each}
-    {#each prompts as [prompt],index}
-     <fieldset class="group">
-      <legend>{index+1}. {prompt}</legend>
-      <label>One sentence<input bind:value={spark[index].sentence}/></label>
-      <label>Notes<textarea rows="3" bind:value={spark[index].notes}></textarea></label>
-     </fieldset>
-    {/each}
-   </div>
-
-   <div role="tabpanel" id="panel-focus" aria-labelledby="tab-focus" tabindex="0" hidden={selected!=='focus'}>
-    <p>Look at what you’ve written so far. What pulls you most for the next two weeks? Choose one interest to explore.</p>
-    <fieldset class="group">
-     <legend>What would you like to explore over the next two weeks?</legend>
-     <label>One sentence<input bind:value={focus.sentence} aria-describedby="focus-helper"/></label>
-     <p class="fine" id="focus-helper">If you’re stuck between two, pick the one you’d be a little excited to tell a friend about.</p>
-     <label>Notes<textarea rows="3" bind:value={focus.notes}></textarea></label>
-    </fieldset>
-   </div>
-
-   <div role="tabpanel" id="panel-brainstorm" aria-labelledby="tab-brainstorm" tabindex="0" hidden={selected!=='brainstorm'}>
-    <p>Think of small things you might want to do around your interest. Each one should take about 15 minutes. Keep adding to the list. You can come back and edit it any time.</p>
-    {#if focus.sentence}<p><strong>Your focus</strong> {focus.sentence}</p>{/if}
-    <form on:submit|preventDefault={addItem}>
-     <label for="new-small-action">Small action</label>
-     <div class="row"><input id="new-small-action" bind:value={newItem} required/><button class="button">Add</button></div>
-    </form>
-    {#if activeItems.length}
-     <ul aria-label="Small actions">
-      {#each activeItems as item (item.id)}
-       <li>
-        {#if editing===item.id}
-         <form class="row wrap" on:submit|preventDefault={()=>renameItem(item.id)}>
-          <input aria-label="Edit small action" bind:value={revisedTitle} required/>
-          <button class="button small">Apply</button>
-          <button type="button" class="button small" on:click={()=>editing=''}>Cancel</button>
-         </form>
-        {:else}
-         {item.title}
-         <button type="button" class="icon-button" aria-label={'Edit '+item.title} on:click={()=>{editing=item.id;revisedTitle=item.title;}}>✎</button>
-         <button type="button" class="icon-button" aria-label={'Remove '+item.title} on:click={()=>removeItem(item.id)}>×</button>
-        {/if}
-       </li>
-      {/each}
-     </ul>
-    {/if}
-    <label>Notes<textarea rows="3" bind:value={notes}></textarea></label>
-   </div>
-
-   <div role="tabpanel" id="panel-act" aria-labelledby="tab-act" tabindex="0" hidden={selected!=='act'}>
-    <h2>Your Two-Week Experiment</h2>
-    <h3>Your Focus</h3>
-    <p>{focus.sentence||'Add a two-week interest in Focus.'}</p>
-    {#if focus.notes}<p class="notes">{focus.notes}</p>{/if}
-    <p>Here’s your brainstorm list. If you want to add, remove, or change anything, go back to the Brainstorm tab. Then check the ones you’ll do this week.</p>
     {#each activeItems as item (item.id)}
      {@const savedAct=savedActs.get(item.id)}
      <div class="action" id={savedAct?'draft-'+savedAct.revision.document_id:undefined}>
-      <label class="choice"><input type="checkbox" bind:checked={plans[item.id].selected}/>{item.title}</label>
+       <h3>{item.title}</h3>
+       {#if item.description}<p>{item.description}</p>{/if}
+       <div class="row wrap">
+        <button type="button" class="button small" disabled={!!editing||!!newItem.trim()} on:click={()=>openAction(item.id,'share')}>Share</button>
+        {#if plans[item.id].done}<span class="fine">Completed</span>
+        {:else}<button type="button" class="button small" disabled={!!editing||!!newItem.trim()} on:click={()=>openAction(item.id,'complete')}>Complete</button>{/if}
+        <button type="button" class="button small" disabled={!!editing||!!newItem.trim()} on:click={()=>openAction(item.id,'transfer')}>Move</button>
+        <button type="button" class="text-button" aria-haspopup="dialog" on:click={()=>editItem(item)}>Edit</button>
+        <button type="button" class="text-button" on:click={()=>removeItem(item.id)}>Remove</button>
+       </div>
+      <label class="choice"><input type="checkbox" bind:checked={plans[item.id].selected}/>Plan for this week</label>
       {#if plans[item.id].selected||plans[item.id].done}
        <fieldset class="group">
         <legend>Plan for {item.title}</legend>
@@ -347,7 +348,6 @@
          {/if}
         {/each}
         <p class="fine">Example: I will sit outside and watch birds on Tuesday and Thursday mornings for 30 minutes total, and take notes on what I see.</p>
-        <label class="choice"><input type="checkbox" bind:checked={plans[item.id].done}/>I did this</label>
         {#if savedAct}
          <button type="button" class="text-button" on:click={()=>openCreate('experiment',savedAct.revision.document_id)}>Start an experiment from this action</button>
         {/if}
@@ -355,8 +355,12 @@
       {/if}
      </div>
     {:else}
-     <p>Add a small action in Brainstorm to get started.</p>
+     <p>Add an action to get started.</p>
     {/each}
+    <form on:submit|preventDefault={addItem}>
+     <label for="new-small-action">New Act</label>
+     <div class="row"><input id="new-small-action" bind:value={newItem} required/><button class="button" disabled={!!editing}>Add Act</button></div>
+    </form>
     {#if archivedItems.length}
      <details class="group"><summary>Removed actions</summary>
       {#each archivedItems as item (item.id)}
@@ -369,6 +373,7 @@
       {/each}
      </details>
     {/if}
+    <label>Action notes<textarea rows="3" bind:value={notes}></textarea></label>
    </div>
 
    <div role="tabpanel" id="panel-story" aria-labelledby="tab-story" tabindex="0" hidden={selected!=='story'}>
@@ -405,14 +410,14 @@
    </div>
 
    <div class="group">
-    <TagEditor bind:tags markdownTags={draftTags(parent).filter(tag=>!explicitTags(parent).includes(tag))} disabled={busy}/>
+    <TagEditor bind:tags {availableTags} markdownTags={draftTags(parent).filter(tag=>!explicitTags(parent).includes(tag))} disabled={busy}/>
    </div>
   </fieldset>
   <div class="row wrap save-row">
    <button type="button" class="button primary" disabled={busy||!changed.length||!!editing||!!newItem.trim()} on:click={save}>
     {busy?'Saving…':'Save experiment'}
    </button>
-   <span class="fine" role="status">{editing?'Apply or cancel the item edit before saving.':newItem.trim()?'Add the small action before saving.':changed.length?'Unsaved changes':'All changes saved'}</span>
+   <span class="fine" role="status">{editing?'Apply or cancel the item edit before saving.':newItem.trim()?'Add the new Act before saving.':changed.length?'Unsaved changes':'All changes saved'}</span>
   </div>
   {#if error}<p class="alert" role="alert">{error}</p>{/if}
   {#if selected==='story'&&savedStory}
@@ -424,6 +429,7 @@
 
  <aside class="panel build" aria-labelledby="build-heading">
   <h2 id="build-heading">Experiment build</h2>
+  {#if idea}<p><a class="text-link" href={'/documents/?id='+encodeURIComponent(idea.revision.document_id)}>{idea.title}</a></p>{/if}
   {#if !spark.some(response=>responseBody(response))&&!responseBody(focus)&&!activeItems.length&&!notes.trim()}
    <p>Your ideas, focus, and small actions will appear here as you write.</p>
   {/if}
@@ -441,7 +447,7 @@
    <p class="notes">{responseBody(focus)}</p>
   {/if}
   {#if activeItems.length||notes.trim()}
-   <h3>Brainstorm</h3>
+   <h3>Actions</h3>
    {#if activeItems.length}<ul>{#each activeItems as item (item.id)}
     <li>{item.title}{plans[item.id].done?' (done)':plans[item.id].selected?' (this week)':''}</li>
    {/each}</ul>{/if}
@@ -449,6 +455,25 @@
   {/if}
  </aside>
 </div>
+
+<dialog class="modal" bind:this={editActionDialog} aria-labelledby="edit-action-title" on:close={()=>editing=''}>
+ {#if editing}
+  <form on:submit|preventDefault={()=>renameItem(editing)}>
+   <h2 id="edit-action-title">Edit action</h2>
+   <label>Action name<input bind:value={revisedTitle} required/></label>
+   <label>Description<textarea rows="3" bind:value={itemDescription}></textarea></label>
+   <label>Tags (comma-separated)<input bind:value={itemTags}/></label>
+   <label>Expected time (minutes)<input type="number" min="1" max="4294967295" step="1"
+    value={itemMinutes} on:input={event=>itemMinutes=event.currentTarget.value}/></label>
+   <div class="row wrap">
+    <button class="button primary" disabled={!revisedTitle.trim()}>Apply changes</button>
+    <button type="button" class="button" on:click={()=>editActionDialog.close()}>Cancel</button>
+   </div>
+  </form>
+ {/if}
+</dialog>
+
+<ActionDialog bind:this={actionDialog} allowCopy={false} onChange={syncActions}/>
 
 <dialog class="modal" bind:this={locationDialog} aria-labelledby="story-location-title" on:cancel={event=>{if(locating)event.preventDefault();}}>
  {#if locationDraft}
@@ -493,7 +518,6 @@
  .action{border:1px solid var(--line);border-radius:7px;padding:14px;margin-top:12px;overflow-wrap:anywhere}
  .choice{display:flex;align-items:baseline;gap:8px;margin:0}
  .choice input{width:auto;margin:0}
- .action .group .choice{margin-top:14px}
  .notes{white-space:pre-wrap;overflow-wrap:anywhere}
  .save-row{margin-top:14px}
  .location-fields{border:0;margin:0;padding:0;min-width:0}

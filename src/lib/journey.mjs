@@ -26,10 +26,7 @@ export function phase(parent,all) {
  const children=experimentDocuments(parent,all);
  if(parent.meta?.workflow_version===2){
   if(children.some(d=>d.doc_type==='story'))return 'Story So Far';
-  if(children.some(d=>d.doc_type==='act'))return 'Act';
-  if(children.some(d=>d.doc_type==='brainstorm'))return 'Brainstorm';
-  if(children.some(d=>d.doc_type==='focus'))return 'Focus';
-  return 'Spark';
+  return 'Act';
  }
  if(children.some(d=>d.doc_type==='story'))return 'Story';
  if(children.some(d=>d.doc_type==='action'))return 'Action';

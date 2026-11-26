@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Write your story</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #181818; background: #f5f5f5; font: 1rem/1.5 system-ui, sans-serif; }
+    main { max-width: 46rem; margin: 2rem auto; padding: 0 1rem; }
+    h1 { margin: 0 0 .75rem; font-size: 2rem; }
+    p { margin: 0 0 1rem; }
+    label { display: block; font-weight: 650; margin-bottom: .35rem; }
+    textarea { display: block; width: 100%; min-height: 24rem; padding: .8rem; border: 1px solid #777; background: white; color: inherit; font: 1rem/1.5 ui-monospace, monospace; resize: vertical; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Write your story</h1>
+    <p id="guidance">Use the Enters below as a starting point. Edit the headings and descriptions, then write what happened in your own words.</p>
+    <label for="story">Story (Markdown)</label>
+    <textarea id="story" aria-describedby="guidance" rows="23">
+# Grow my own Food
+
+[Add an introduction to your story.]
+
+## Plant Seeds
+
+[Describe what you planned to plant and what happened.]
+
+### Gather Supplies
+
+Potting soil, tray, seeds, water.
+
+[Describe what you gathered and what you noticed.]
+
+### Select seed type
+
+[Describe which seeds you considered and what you chose.]
+</textarea>
+  </main>
+</body>
+</html>

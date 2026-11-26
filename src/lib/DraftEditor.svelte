@@ -1,5 +1,8 @@
 <script lang="ts">
  import {raftSteps as steps,brainstormJobs,defaultSprint,storyPrompts} from './raft-flow.mjs';
+ import IdeaTabs from './IdeaTabs.svelte';
+ import IdeaFields from './IdeaFields.svelte';
+ import {ideaResponses} from './idea.mjs';
  import TagEditor from './TagEditor.svelte';
  import ActionChecklist from './ActionChecklist.svelte';
  import ExperimentLocations from './ExperimentLocations.svelte';
@@ -21,15 +24,19 @@
  let current:Draft|null=null,id='',recoveryId='',title='',body='',meta:Record<string,any>={},details:string|null=null;
  let tags:string[]=[];
  $: markdownTags=current?draftTags(current).filter(tag=>!explicitTags(current).includes(tag)):[];
+ let ideaStage='idea', responses=ideaResponses();
  let loading=true,busy=false,error='',baseline='',pending:any=null,conflict:Draft|null=null;
  let history:Revision[]=[],showHistory=false,historical:Draft|null=null,recoveryFailed=false,ready=false;
  $: nextStep=step?steps[steps.findIndex(s=>s.key===step.key)+1]:null;
+ $: if(current?.doc_type==='idea')meta={...meta,...responses};
  $: fingerprint=JSON.stringify({title,body,tags,meta,details});
  $: dirty=ready&&fingerprint!==baseline;
  $: dirtyEditor.set(dirty);
  $: if(ready&&dirty&&!pending){fingerprint;recoveryFailed=!writeRecovery(recoveryId,{document_id:id,payload:payload(),revision_id:current?.revision.revision_id??null,saved_at:new Date().toISOString()});}
  function payload():DraftPayload{const savedMeta=step?.key==='experiment_start'?{...meta,sprint}:meta;return {doc_type:step?.type||current?.doc_type||'idea',title:title.trim()||step?.short||'Untitled draft',body_md:body,tags:JSON.stringify(tags),meta:structuredClone(savedMeta),details,author:current?.author,description:current?.description};}
  function adopt(draft:Draft){current=draft;id=draft.revision.document_id;title=draft.title;body=draft.body_md;tags=explicitTags(draft);meta=structuredClone(draft.meta||{});details=draft.details??null;
+  responses=ideaResponses(meta);
+  if(draft.doc_type==='idea')meta={...meta,...responses};
   historical=null;conflict=null;
   baseline=JSON.stringify({title,body,tags,meta,details});ready=true;
  }
@@ -44,7 +51,7 @@
   }
   if(recovery&&(!current||!sameContent(current,recovery.payload)))pending=recovery;else if(recovery)clearRecovery(recoveryId,recovery._storageKey);
  }catch(e){error=message(e);}finally{loading=false;}}
- function recover(){if(!pending)return;const saved=pending;if(writeRecovery(recoveryId,saved))clearRecovery(recoveryId,saved._storageKey);pending=null;title=saved.payload.title;body=saved.payload.body_md;meta=saved.payload.meta;details=saved.payload.details??null;
+ function recover(){if(!pending)return;const saved=pending;if(writeRecovery(recoveryId,saved))clearRecovery(recoveryId,saved._storageKey);pending=null;title=saved.payload.title;body=saved.payload.body_md;meta=saved.payload.meta;responses=ideaResponses(meta);details=saved.payload.details??null;
   if(saved.payload.tags!==undefined)tags=explicitTags({tags:saved.payload.tags});
   if(current&&saved.revision_id!==current.revision.revision_id)conflict=current;
  }
@@ -90,6 +97,20 @@
  {#if error}<p class="alert" role="alert">{error}</p>{/if}
  {#if conflict}<div class="conflict-panel" role="alert"><strong>Another version was saved while you were writing.</strong><p>Your edits are still here. Compare them with the saved version before deciding.</p><details><summary>Read the saved version</summary><h3>{conflict.title}</h3><pre class="readable-markdown">{conflict.body_md}</pre></details><div class="row wrap"><button class="button small" on:click={saveMyVersion}>Save my version next</button><button class="text-button" on:click={useSavedVersion}>Use saved version</button></div></div>{/if}
  {#if showHistory}<section class="history-panel"><h3>Saved versions</h3><p class="fine">Restoring a version makes a new save. Earlier work stays in your history.</p><div class="history-list">{#each history as revision}<button class:chosen={historical?.revision.revision_id===revision.revision_id} on:click={()=>inspect(revision)}><span>Version {revision.revision_number}</span><small>{new Date(revision.saved_at.replace(' ','T')+'Z').toLocaleString()}</small></button>{/each}</div>{#if historical}<div class="history-preview"><h4>{historical.title}</h4><pre class="readable-markdown">{historical.body_md||'This version is empty.'}</pre><button class="button small" on:click={restore} disabled={busy||!['draft','changes_requested'].includes(current?.status||'')}>Restore this content</button></div>{/if}</section>{/if}
+ {#if current?.doc_type==='idea'}
+  <IdeaTabs id="edit-idea" bind:stage={ideaStage}/>
+  {#each ['spark','focus'] as panel}
+   <div role="tabpanel" id={'edit-idea-panel-'+panel} aria-labelledby={'edit-idea-tab-'+panel} hidden={ideaStage!==panel}>
+    {#if ideaStage===panel}
+     <fieldset class="editor-fields" disabled={busy||!!pending||!['draft','changes_requested'].includes(current.status)}>
+      <IdeaFields stage={panel} bind:spark={responses.spark} bind:focus={responses.focus}/>
+     </fieldset>
+    {/if}
+   </div>
+  {/each}
+ {/if}
+ <div id="edit-idea-panel-idea" role={current?.doc_type==='idea'?'tabpanel':undefined}
+  aria-labelledby={current?.doc_type==='idea'?'edit-idea-tab-idea':undefined} hidden={current?.doc_type==='idea'&&ideaStage!=='idea'}>
  <fieldset disabled={busy||!!pending||(!['draft','changes_requested'].includes(current?.status||'draft'))} class="editor-fields">{#if !step||step.key==='action'}<label for="document-title">Title<input id="document-title" class="title-input" bind:value={title} placeholder="Give this a name…"/></label>{/if}
  {#if step?.key==='participation'}<div class="choice-row"><label class:chosen={meta.participation?.mode==='partner'}><input type="radio" name="company" checked={meta.participation?.mode==='partner'} on:change={()=>meta={...meta,participation:{...meta.participation,mode:'partner'}}}/> With a presentation partner</label><label class:chosen={meta.participation?.mode==='solo'}><input type="radio" name="company" checked={meta.participation?.mode==='solo'} on:change={()=>meta={...meta,participation:{mode:'solo'}}}/> On my own</label></div>{#if meta.participation?.mode==='partner'}<label for="partner-name">Partner’s name<input id="partner-name" value={meta.participation?.name||''} on:input={e=>meta={...meta,participation:{...meta.participation,name:e.currentTarget.value}}}/></label><label class="checkbox-label"><input type="checkbox" checked={!!meta.participation?.agreed} on:change={e=>meta={...meta,participation:{...meta.participation,agreed:e.currentTarget.checked}}}/>We have agreed to be presentation partners.</label>{/if}{/if}
  {#if step?.key==='meeting_plan'}<div class="date-grid"><label for="week-one">After week one<input id="week-one" type="datetime-local" value={localDate(meta.schedule?.week_one)} on:input={e=>setMeeting('week_one',e.currentTarget.value)}/><small>Research, preparation, and intentions</small></label><label for="week-two">After week two<input id="week-two" type="datetime-local" value={localDate(meta.schedule?.week_two)} on:input={e=>setMeeting('week_two',e.currentTarget.value)}/><small>Findings, reflection, and celebration</small></label></div><p class="fine">Times are in {Intl.DateTimeFormat().resolvedOptions().timeZone}. Working solo? Set your two personal review dates.</p>{/if}
@@ -166,6 +187,7 @@
  {/if}
   <TagEditor bind:tags {markdownTags} disabled={busy||!!pending||!['draft','changes_requested'].includes(current?.status||'draft')}/>
  </fieldset>
+ </div>
  {#if current&&!dirty&&!pending&&!conflict}
  <section class="recovery-banner" aria-label="What’s next" aria-live="polite">
  <strong>Your notes are saved.</strong>
@@ -173,7 +195,7 @@
  <p>You can keep writing here or move on to {nextStep.short.toLowerCase()}.</p>
  <a class="button primary" href={`/experiments/?id=${parent.revision.document_id}&step=${nextStep.key}`}>Continue to {nextStep.short}<Icon name="arrow" size={16}/></a>
  {:else if !parent&&['idea','interest'].includes(current.doc_type)}
- <p>Turn this into a small experiment. Next, give your thoughts room and choose one piece to explore. Your original notes will stay here.</p>
+ <p>Build from this starting point and brainstorm small actions to try.</p>
  <button class="button primary" on:click={()=>openCreate('experiment',current!.revision.document_id)}>Build an experiment from this<Icon name="arrow" size={16}/></button>
  {:else}<p>Come back whenever you’re ready, or explore your other saved work.</p><a class="text-link" href="/library/">Back to my library<Icon name="arrow" size={16}/></a>{/if}
  </section>{/if}
