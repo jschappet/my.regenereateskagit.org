@@ -1,0 +1,528 @@
+<script lang="ts">
+ import {onDestroy,tick} from 'svelte';
+ import {beforeNavigate} from '$app/navigation';
+ import {page} from '$app/stores';
+ import {draftTags, explicitTags, sameContent} from './content.mjs';
+ import {dirtyEditor, documents, message, notify, openCreate, saveDocument, session, stableDocumentId} from './workspace';
+ import {locationsFor, newLocation, validLocation, type ExperimentLocation} from './experiment-locations';
+ import {findSkagitAddress} from './skagit-address.mjs';
+ import MapSubmission from './MapSubmission.svelte';
+ import ActionDialog from './ActionDialog.svelte';
+ import {todoActions} from './todo-actions';
+ import {experimentStartingPoint} from './idea.mjs';
+ import {referenceUrl} from './document-links.mjs';
+ import ReadOnlyDraft from './ReadOnlyDraft.svelte';
+ import TagEditor from './TagEditor.svelte';
+ import type {BrainstormItem} from './todo-actions';
+ import type {Draft, DraftPayload} from './types';
+
+ export let parent: Draft;
+ export let children: Draft[];
+
+ const tabs = [
+  {key:'act', label:'Act'},
+  {key:'story', label:'Story So Far'},
+ ] as const;
+ type Tab = typeof tabs[number]['key'];
+ type Response = {sentence:string; notes:string};
+ type Item = BrainstormItem;
+ const planFields = [
+  ['task','I will'], ['when','When'], ['duration','For how long'],
+  ['tracking','I’ll keep track by'], ['learning','I’m hoping to notice or find out'],
+ ] as const;
+ type Plan = {selected:boolean; done:boolean; reflection:string} & Record<typeof planFields[number][0], string>;
+ const prompts = [
+  ['What has captivated your attention lately? What draws you in?', 'What draws you in'],
+  ["What's something you keep meaning to try?", 'What you’d like to try'],
+  ['If you had a free Saturday morning and a friend to help, what would you explore here in Skagit?', 'What you’d explore in Skagit'],
+ ];
+ const emptyResponse = (): Response => ({sentence:'', notes:''});
+ const emptyPlan = (): Plan => ({selected:false,done:false,task:'',when:'',duration:'',tracking:'',learning:'',reflection:''});
+ const validMinutes = (value:string) => /^[0-9]+$/.test(value) && Number(value)>0 && Number(value)<=4_294_967_295;
+ const planValue = (plan:Plan,key:typeof planFields[number][0]) =>
+  key==='duration'&&validMinutes(plan.duration)?plan.duration+' minutes':plan[key].trim();
+ const saved = new Map<string,Draft>([['experiment', parent]]);
+ for (const draft of children) {
+  if (draft.doc_type==='act' && typeof draft.meta?.brainstorm_item_id==='string') {
+   saved.set('act:'+draft.meta.brainstorm_item_id,draft);
+  } else if (['spark','focus','brainstorm'].includes(draft.doc_type)||tabs.some(tab=>tab.key===draft.doc_type)) {
+   saved.set(draft.doc_type,draft);
+  }
+ }
+
+ const parentId=parent.revision.document_id;
+ let selected:Tab=tabs.find(tab=>tab.key===$page.url.searchParams.get('step'))?.key??'act';
+ let actionDialog:ActionDialog;
+ let editActionDialog:HTMLDialogElement;
+ let tabButtons:HTMLButtonElement[]=[];
+ let tags:string[]=explicitTags(parent);
+ $: userId = $session.profile?.user?.id;
+ $: availableTags = $documents
+  .filter(draft => draft.submitted_by === userId)
+  .flatMap(draftTags);
+ $: idea=experimentStartingPoint(parent,$documents);
+ $: spark=prompts.map((_,index)=>({...emptyResponse(),...(idea?.meta?.spark?.[index]??saved.get('spark')?.meta?.responses?.[index])}));
+ $: focus={...emptyResponse(),...(idea?.meta?.focus??saved.get('focus')?.meta?.response)} as Response;
+ let items:Item[]=structuredClone(saved.get('brainstorm')?.meta?.items??[]);
+ let notes=saved.get('brainstorm')?.meta?.notes??saved.get('brainstorm')?.body_md??'';
+ let plans:Record<string,Plan>=Object.fromEntries(items.map(item=>[
+  item.id,{...emptyPlan(),...saved.get('act:'+item.id)?.meta?.plan},
+ ]));
+ let storyEdited=!!saved.get('story') && saved.get('story')?.meta?.generated!==true;
+ let storyText=saved.get('story')?.body_md??'';
+ let locations:ExperimentLocation[]=saved.has('story')?structuredClone(locationsFor(saved.get('story')!)):[];
+ let locationDialog:HTMLDialogElement;
+ let locationDraft:ExperimentLocation|undefined;
+ let locationError='', locating=false, locationLookupFailed=false, locationIndex=-1;
+ let newItem='', editing='', revisedTitle='', itemDescription='', itemTags='', itemMinutes='', error='', busy=false;
+
+ function storyDraft(focus:Response, items:Item[], plans:Record<string,Plan>){
+  const paragraphs=[];
+  if(focus.sentence.trim())paragraphs.push('Two-week focus: '+focus.sentence.trim());
+  if(focus.notes.trim())paragraphs.push('Focus notes: '+focus.notes.trim());
+  for(const item of items){
+   const plan=plans[item.id];
+   if(!plan || (!plan.done && !plan.selected && !planFields.some(([key])=>plan[key].trim())))continue;
+   const label=plan.done?'Action taken':plan.selected&&!item.removed?'Planned action':'Earlier plan';
+   const lines=[label+': '+item.title,...planFields
+    .filter(([key])=>plan[key].trim())
+    .map(([key,label])=>label+': '+planValue(plan,key))];
+   if(plan.done&&plan.reflection.trim())lines.push('What I noticed or found out: '+plan.reflection.trim());
+   paragraphs.push(lines.join('  \n'));
+  }
+  return paragraphs.join('\n\n');
+ }
+
+ function childPayload(key:string,type:string,title:string,body_md:string,fields:Record<string,unknown>):DraftPayload{
+  const current=saved.get(key);
+  return {doc_type:type,title,body_md,description:current?.description,details:current?.details,
+   meta:{...(current?.meta??{links:[{relation:'part_of',targets:[{document_id:parentId}]}]}),...fields}};
+ }
+ function responseBody(response:Response){
+  return [response.sentence.trim(),response.notes.trim()].filter(Boolean).join('\n\n');
+ }
+ function payloads(tags:string[],items:Item[],notes:string,plans:Record<string,Plan>,
+   story:string,storyEdited:boolean,locations:ExperimentLocation[]){
+  const root=saved.get('experiment')!;
+  const brainstormBody=[items.filter(item=>!item.removed).map(item=>'- '+item.title).join('\n'),notes.trim()]
+   .filter(Boolean).join('\n\n');
+  const payloads=new Map<string,DraftPayload>([
+   ['experiment',{doc_type:root.doc_type,title:root.title,body_md:root.body_md,
+    description:root.description,details:root.details,meta:root.meta,tags:JSON.stringify(tags)}],
+   ['brainstorm',childPayload('brainstorm','brainstorm','Brainstorm',brainstormBody,{items,notes})],
+  ]);
+  for(const item of items){
+   const key='act:'+item.id, plan=plans[item.id];
+   if(!plan || (!saved.has(key) && samePlan(plan,emptyPlan())))continue;
+   const body=[plan.done?'Completed':plan.selected&&!item.removed?'Planned':'Earlier plan',...planFields
+    .filter(([key])=>plan[key].trim()).map(([key,label])=>label+': '+planValue(plan,key))];
+   if(plan.done&&plan.reflection.trim())body.push('What I noticed or found out: '+plan.reflection.trim());
+   payloads.set(key,childPayload(key,'act',item.title,body.join('\n\n'),{brainstorm_item_id:item.id,plan}));
+  }
+  payloads.set('story',childPayload('story','story','Story So Far',story,{generated:!storyEdited,workspace_locations:locations}));
+  return payloads;
+ }
+ function samePlan(a:Plan,b:Plan){
+  return a.selected===b.selected && a.done===b.done && a.reflection===b.reflection
+   && planFields.every(([key])=>a[key]===b[key]);
+ }
+
+ const initialFocus={...emptyResponse(),...(experimentStartingPoint(parent,$documents)?.meta?.focus??saved.get('focus')?.meta?.response)};
+ let baseline=structuredClone(payloads(tags,items,notes,plans,storyEdited?storyText:storyDraft(initialFocus,items,plans),storyEdited,locations));
+ $: draftStory=storyDraft(focus,items,plans);
+ $: story=storyEdited?storyText:draftStory;
+ $: updates=payloads(tags,items,notes,plans,story,storyEdited,locations);
+ $: changed=[...updates].filter(([key,payload])=>{
+  const previous=baseline.get(key);
+  return !previous||!sameContent(previous,payload);
+ });
+ $: dirty=changed.length>0||!!newItem.trim()||!!editing;
+ $: dirtyEditor.set(dirty);
+ beforeNavigate(({cancel,willUnload})=>{
+  if(busy || (dirty && (willUnload || !confirm('Leave without saving your experiment?'))))cancel();
+ });
+ onDestroy(()=>dirtyEditor.set(false));
+
+ function chooseTab(key:Tab){selected=key;}
+ function tabKey(event:KeyboardEvent,index:number){
+  const target={ArrowLeft:(index+tabs.length-1)%tabs.length,ArrowRight:(index+1)%tabs.length,
+   Home:0,End:tabs.length-1}[event.key];
+  if(target===undefined)return;
+  event.preventDefault();
+  chooseTab(tabs[target].key);
+  tabButtons[target]?.focus();
+ }
+ async function addItem(){
+  const title=newItem.trim();
+  if(!title||editing||busy)return;
+  const id=crypto.randomUUID();
+  items=[...items,{id,title}];
+  plans={...plans,[id]:emptyPlan()};
+  newItem='';
+  await tick();
+  await save();
+ }
+ async function editItem(item:Item){
+  editing=item.id;
+  revisedTitle=item.title;
+  itemDescription=item.description??'';
+  itemTags=(item.tags??[]).join(', ');
+  itemMinutes=String(item.expected_minutes??'');
+  await tick();
+  editActionDialog.showModal();
+ }
+ function renameItem(id:string){
+  const title=revisedTitle.trim();
+  if(!title)return;
+  items=items.map(item=>item.id===id?{...item,title,description:itemDescription.trim(),
+   tags:itemTags.split(',').map(tag=>tag.trim().replace(/^#+/,'')).filter(Boolean),
+   expected_minutes:itemMinutes?Number(itemMinutes):undefined}:item);
+  editActionDialog.close();
+ }
+ function removeItem(id:string){
+  const plan=plans[id];
+  items=plan&&!samePlan(plan,emptyPlan()) || saved.has('act:'+id)
+   ?items.map(item=>item.id===id?{...item,removed:true}:item)
+   :items.filter(item=>item.id!==id);
+  if(editing===id)editing='';
+ }
+ async function openLocation(index=-1){
+  locationIndex=index;
+  locationDraft=index>=0?{...locations[index]}:newLocation();
+  locationError='';
+  locationLookupFailed=false;
+  await tick();
+  if(!locationDialog.open)locationDialog.showModal();
+ }
+ async function applyLocation(skipLookup=false){
+  if(!locationDraft||locating)return;
+  locationError='';
+  locationLookupFailed=false;
+  const next={...locationDraft,name:locationDraft.name.trim(),address:locationDraft.address.trim(),
+   city:locationDraft.city.trim(),state:locationDraft.state.trim()};
+  if(!validLocation(next)){
+   locationError='Enter a place name, street address, and city and state. Coordinates must be within range.';
+   return;
+  }
+  const previous=locations[locationIndex];
+  if(previous&&next.latitude===previous.latitude&&next.longitude===previous.longitude
+    &&(['address','city','state'] as const).some(key=>next[key].toLowerCase()!==previous[key].trim().toLowerCase())){
+   next.latitude=null;
+   next.longitude=null;
+  }
+  if((next.latitude===null)!==(next.longitude===null)){
+   locationError='Enter both latitude and longitude to show this location on your map.';
+   return;
+  }
+  if(next.latitude===null&&!skipLookup){
+   locating=true;
+   try{Object.assign(next,await findSkagitAddress(next));}
+   catch(reason){locationError=message(reason);locationLookupFailed=true;return;}
+   finally{locating=false;}
+  }
+  locations=locationIndex<0?[...locations,next]:locations.map((location,index)=>index===locationIndex?next:location);
+  locationDialog.close();
+ }
+ function clearLocation(){
+  locations=locations.filter((_,index)=>index!==locationIndex);
+  locationDialog.close();
+ }
+ async function save(){
+  if(busy)return false;
+  if(!changed.length)return true;
+  error='';
+  for(const item of items){
+   const plan=plans[item.id];
+   const previous=baseline.get('act:'+item.id)?.meta?.plan;
+   const completed=plan.done&&!previous?.done;
+   const durationChanged=!!plan.duration&&plan.duration!==previous?.duration;
+   if((completed||durationChanged)&&!validMinutes(plan.duration)){
+    selected='act';
+    error='Enter a duration in whole minutes greater than zero for '+item.title+'.';
+    return false;
+   }
+  }
+  if(locations.some(location=>!validLocation(location))){
+   selected='story';
+   error='Complete the location name, street address, city, and state, or clear the location.';
+   return false;
+  }
+  busy=true;
+  let nextBaseline=new Map(baseline);
+  try{
+   for(const [key,payload] of changed){
+    const current=saved.get(key);
+    const id=current?.revision.document_id??await stableDocumentId('experiment-workflow:'+parentId+':'+key);
+    const result=await saveDocument(payload,current??null,id);
+    saved.set(key,result);
+    nextBaseline.set(key,structuredClone(payload));
+   }
+   notify('Experiment saved.');
+   return true;
+  }catch(e){error=message(e);return false;}
+  finally{baseline=nextBaseline;busy=false;}
+ }
+ async function openAction(id:string,mode:'share'|'complete'|'transfer'){
+  if(!await save())return;
+  const todo=todoActions([parent],$documents).find(action=>action.item.id===id);
+  if(todo)actionDialog.open(todo,mode);
+  else error='This action could not be loaded. Refresh the experiment and try again.';
+ }
+
+ async function syncActions(){
+  await tick();
+  const brainstorm=children.find(draft=>draft.doc_type==='brainstorm');
+  if(brainstorm)saved.set('brainstorm',brainstorm);
+  items=structuredClone(brainstorm?.meta?.items??[]);
+  for(const key of saved.keys())if(key.startsWith('act:'))saved.delete(key);
+  for(const draft of children){
+   if(draft.doc_type==='act'&&typeof draft.meta?.brainstorm_item_id==='string'){
+    saved.set('act:'+draft.meta.brainstorm_item_id,draft);
+   }
+  }
+  plans=Object.fromEntries(items.map(item=>[item.id,{...emptyPlan(),...saved.get('act:'+item.id)?.meta?.plan}]));
+  const previousStory=baseline.get('story');
+  baseline=structuredClone(payloads(tags,items,notes,plans,story,storyEdited,locations));
+  if(previousStory)baseline.set('story',previousStory);
+ }
+ $: sources=(parent.meta?.links??[]).filter(link=>link.relation==='grew_from').flatMap(link=>link.targets);
+ $: savedActs=new Map(children.filter(child=>child.doc_type==='act').map(child=>[child.meta?.brainstorm_item_id,child]));
+ $: savedStory=children.find(child=>child.doc_type==='story');
+ $: activeItems=items.filter(item=>!item.removed);
+ $: archivedItems=items.filter(item=>item.removed);
+</script>
+
+<div class="workflow">
+ <div class="editor">
+  <div class="row wrap tabs" role="tablist" aria-label="Experiment stages">
+   {#each tabs as tab,index}
+    <button type="button" class="button" class:primary={selected===tab.key} role="tab"
+     id={'tab-'+tab.key} aria-controls={'panel-'+tab.key} aria-selected={selected===tab.key}
+     tabindex={selected===tab.key?0:-1} bind:this={tabButtons[index]}
+     on:click={()=>chooseTab(tab.key)} on:keydown={event=>tabKey(event,index)}>{tab.label}</button>
+   {/each}
+  </div>
+
+  <fieldset class="panel editor-panel" disabled={busy}>
+   <div role="tabpanel" id="panel-act" aria-labelledby="tab-act" tabindex="0" hidden={selected!=='act'}>
+    {#each sources as source}
+     {@const draft=$documents.find(doc=>doc.revision.document_id===source.document_id)}
+     {@const href=referenceUrl(source,$documents)}
+     {#if draft}
+      <details class="legacy-notebook"><summary>Starting point · {draft.title}</summary><ReadOnlyDraft {draft}/></details>
+     {:else if href}
+      <p>Starting point · <a class="text-link" href={href}>{source.title||source.url||'View source'}</a></p>
+     {:else if source.title}
+      <p>Starting point · {source.title}</p>
+     {/if}
+    {/each}
+    {#each activeItems as item (item.id)}
+     {@const savedAct=savedActs.get(item.id)}
+     <div class="action" id={savedAct?'draft-'+savedAct.revision.document_id:undefined}>
+       <h3>{item.title}</h3>
+       {#if item.description}<p>{item.description}</p>{/if}
+       <div class="row wrap">
+        <button type="button" class="button small" disabled={!!editing||!!newItem.trim()} on:click={()=>openAction(item.id,'share')}>Share</button>
+        {#if plans[item.id].done}<span class="fine">Completed</span>
+        {:else}<button type="button" class="button small" disabled={!!editing||!!newItem.trim()} on:click={()=>openAction(item.id,'complete')}>Complete</button>{/if}
+        <button type="button" class="button small" disabled={!!editing||!!newItem.trim()} on:click={()=>openAction(item.id,'transfer')}>Move</button>
+        <button type="button" class="text-button" aria-haspopup="dialog" on:click={()=>editItem(item)}>Edit</button>
+        <button type="button" class="text-button" on:click={()=>removeItem(item.id)}>Remove</button>
+       </div>
+      <label class="choice"><input type="checkbox" bind:checked={plans[item.id].selected}/>Plan for this week</label>
+      {#if plans[item.id].selected||plans[item.id].done}
+       <fieldset class="group">
+        <legend>Plan for {item.title}</legend>
+        {#each planFields as [key,label]}
+         {#if key==='duration'}
+          <label>For how long (minutes)
+           <input type="number" min="1" max="4294967295" step="1"
+            value={plans[item.id].duration}
+            on:input={e=>{plans[item.id].duration=e.currentTarget.value;}}/>
+          </label>
+          {#if plans[item.id].duration&&!validMinutes(plans[item.id].duration)&&plans[item.id].duration===baseline.get('act:'+item.id)?.meta?.plan?.duration}
+           <p class="fine">Earlier duration: {plans[item.id].duration}</p>
+          {/if}
+         {:else}
+          <label>{label}<input bind:value={plans[item.id][key]}/></label>
+         {/if}
+        {/each}
+        <p class="fine">Example: I will sit outside and watch birds on Tuesday and Thursday mornings for 30 minutes total, and take notes on what I see.</p>
+        {#if savedAct}
+         <button type="button" class="text-button" on:click={()=>openCreate('experiment',savedAct.revision.document_id)}>Start an experiment from this action</button>
+        {/if}
+       </fieldset>
+      {/if}
+     </div>
+    {:else}
+     <p>Add an action to get started.</p>
+    {/each}
+    <form on:submit|preventDefault={addItem}>
+     <label for="new-small-action">New Act</label>
+     <div class="row"><input id="new-small-action" bind:value={newItem} required/><button class="button" disabled={!!editing}>Add Act</button></div>
+    </form>
+    {#if archivedItems.length}
+     <details class="group"><summary>Removed actions</summary>
+      {#each archivedItems as item (item.id)}
+       <div class="action"><h3>{item.title}</h3>
+        {#if plans[item.id].done}<p>Completed</p>{/if}
+        {#each planFields as [key,label]}
+         {#if plans[item.id][key]}<p><strong>{label}</strong> {planValue(plans[item.id],key)}</p>{/if}
+        {/each}
+       </div>
+      {/each}
+     </details>
+    {/if}
+    <label>Action notes<textarea rows="3" bind:value={notes}></textarea></label>
+   </div>
+
+   <div role="tabpanel" id="panel-story" aria-labelledby="tab-story" tabindex="0" hidden={selected!=='story'}>
+    <h2>Story So Far</h2>
+    <p>Review and update the story below. We are most interested in how you conducted this experiment.</p>
+    {#each items.filter(item=>plans[item.id].done) as item (item.id)}
+     <fieldset class="group">
+      <legend>{item.title}</legend>
+      {#if plans[item.id].learning.trim()}
+       <p>You were hoping to notice or find out: {plans[item.id].learning}</p>
+       <label>Did you notice or find out what you were hoping to?
+        <textarea rows="3" bind:value={plans[item.id].reflection}></textarea>
+       </label>
+      {:else}
+       <label>What did you notice or find out?
+        <textarea rows="3" bind:value={plans[item.id].reflection}></textarea>
+       </label>
+      {/if}
+     </fieldset>
+    {/each}
+    <div class="location-summary">
+     <div class="row between wrap">
+      <strong>Locations</strong>
+      <button type="button" class="button secondary" aria-haspopup="dialog" on:click={()=>openLocation()}>Add location</button>
+     </div>
+     {#each locations as location,index (location.id)}
+      <div class="row between wrap">
+       <p>{location.name} · {[location.address,location.city,location.state].filter(Boolean).join(', ')}</p>
+       <button type="button" class="text-button" aria-haspopup="dialog" on:click={()=>openLocation(index)}>Edit location</button>
+      </div>
+     {/each}
+    </div>
+    <label>Story<textarea rows="14" value={story} on:input={e=>{storyText=e.currentTarget.value;storyEdited=true;}}></textarea></label>
+   </div>
+
+   <div class="group">
+    <TagEditor bind:tags {availableTags} markdownTags={draftTags(parent).filter(tag=>!explicitTags(parent).includes(tag))} disabled={busy}/>
+   </div>
+  </fieldset>
+  <div class="row wrap save-row">
+   <button type="button" class="button primary" disabled={busy||!changed.length||!!editing||!!newItem.trim()} on:click={save}>
+    {busy?'Saving…':'Save experiment'}
+   </button>
+   <span class="fine" role="status">{editing?'Apply or cancel the item edit before saving.':newItem.trim()?'Add the new Act before saving.':changed.length?'Unsaved changes':'All changes saved'}</span>
+  </div>
+  {#if error}<p class="alert" role="alert">{error}</p>{/if}
+  {#if selected==='story'&&savedStory}
+   <details class="legacy-notebook"><summary>Share a story on the map</summary>
+    <MapSubmission {parent} story={savedStory} mapLocations={locationsFor(savedStory)} suggestedPlace={locationsFor(savedStory)[0]?.name??''}/>
+   </details>
+  {/if}
+ </div>
+
+ <aside class="panel build" aria-labelledby="build-heading">
+  <h2 id="build-heading">Experiment build</h2>
+  {#if idea}<p><a class="text-link" href={'/documents/?id='+encodeURIComponent(idea.revision.document_id)}>{idea.title}</a></p>{/if}
+  {#if !spark.some(response=>responseBody(response))&&!responseBody(focus)&&!activeItems.length&&!notes.trim()}
+   <p>Your ideas, focus, and small actions will appear here as you write.</p>
+  {/if}
+  {#if spark.some(response=>responseBody(response))}
+   <h3>Ideas from Spark</h3>
+   {#each spark as response,index}
+    {#if responseBody(response)}
+     <h4>{prompts[index][1]}</h4>
+     <p class="notes">{responseBody(response)}</p>
+    {/if}
+   {/each}
+  {/if}
+  {#if responseBody(focus)}
+   <h3>Your two-week focus</h3>
+   <p class="notes">{responseBody(focus)}</p>
+  {/if}
+  {#if activeItems.length||notes.trim()}
+   <h3>Actions</h3>
+   {#if activeItems.length}<ul>{#each activeItems as item (item.id)}
+    <li>{item.title}{plans[item.id].done?' (done)':plans[item.id].selected?' (this week)':''}</li>
+   {/each}</ul>{/if}
+   {#if notes.trim()}<p class="notes">{notes}</p>{/if}
+  {/if}
+ </aside>
+</div>
+
+<dialog class="modal" bind:this={editActionDialog} aria-labelledby="edit-action-title" on:close={()=>editing=''}>
+ {#if editing}
+  <form on:submit|preventDefault={()=>renameItem(editing)}>
+   <h2 id="edit-action-title">Edit action</h2>
+   <label>Action name<input bind:value={revisedTitle} required/></label>
+   <label>Description<textarea rows="3" bind:value={itemDescription}></textarea></label>
+   <label>Tags (comma-separated)<input bind:value={itemTags}/></label>
+   <label>Expected time (minutes)<input type="number" min="1" max="4294967295" step="1"
+    value={itemMinutes} on:input={event=>itemMinutes=event.currentTarget.value}/></label>
+   <div class="row wrap">
+    <button class="button primary" disabled={!revisedTitle.trim()}>Apply changes</button>
+    <button type="button" class="button" on:click={()=>editActionDialog.close()}>Cancel</button>
+   </div>
+  </form>
+ {/if}
+</dialog>
+
+<ActionDialog bind:this={actionDialog} allowCopy={false} onChange={syncActions}/>
+
+<dialog class="modal" bind:this={locationDialog} aria-labelledby="story-location-title" on:cancel={event=>{if(locating)event.preventDefault();}}>
+ {#if locationDraft}
+  <form on:submit|preventDefault={()=>applyLocation()}>
+   <h2 id="story-location-title">{locationIndex>=0?'Edit location':'Add location'}</h2>
+   <fieldset class="location-fields" disabled={locating}>
+   <label>Street address<input autocomplete="street-address" bind:value={locationDraft.address} required/></label>
+   <div class="date-grid">
+    <label>City<input autocomplete="address-level2" bind:value={locationDraft.city} required/></label>
+    <label>State<input autocomplete="address-level1" bind:value={locationDraft.state} required/></label>
+   </div>
+   <label>Place name<input bind:value={locationDraft.name} required/></label>
+   <p class="fine">When you apply an address without coordinates, Heron sends the street number and city to Skagit County to look up a match.</p>
+   <div class="date-grid">
+    <label>Latitude (optional)<input type="number" min="-90" max="90" step="any" value={locationDraft.latitude??''}
+     on:input={event=>{if(locationDraft)locationDraft.latitude=event.currentTarget.value===''?null:event.currentTarget.valueAsNumber;}}/></label>
+    <label>Longitude (optional)<input type="number" min="-180" max="180" step="any" value={locationDraft.longitude??''}
+     on:input={event=>{if(locationDraft)locationDraft.longitude=event.currentTarget.value===''?null:event.currentTarget.valueAsNumber;}}/></label>
+   </div>
+   </fieldset>
+   {#if locationError}<p class="alert" role="alert">{locationError}</p>{/if}
+   <div class="row wrap location-actions">
+    <button type="submit" class="button primary" disabled={locating}>{locating?'Finding address…':'Apply location'}</button>
+    <button type="button" class="button secondary" disabled={locating} on:click={()=>locationDialog.close()}>Cancel</button>
+    {#if locationLookupFailed}<button type="button" class="text-button" on:click={()=>applyLocation(true)}>Apply without a pin</button>{/if}
+    {#if locationIndex>=0}<button type="button" class="text-button" disabled={locating} on:click={clearLocation}>Clear location</button>{/if}
+   </div>
+  </form>
+ {/if}
+</dialog>
+
+<style>
+ .workflow{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:24px;align-items:start}
+ .tabs{margin-bottom:14px;gap:8px}
+ .tabs button{font-size:13px}
+ .editor-panel{padding:24px;min-width:0}
+ .build{overflow-wrap:anywhere;background:#edf0e4}
+ .group{border-top:1px solid var(--line);padding-top:16px;margin-top:20px}
+ legend{font-weight:600}
+ label{font-size:13px;margin-top:14px}
+ .fine{margin:8px 0}
+ .action{border:1px solid var(--line);border-radius:7px;padding:14px;margin-top:12px;overflow-wrap:anywhere}
+ .choice{display:flex;align-items:baseline;gap:8px;margin:0}
+ .choice input{width:auto;margin:0}
+ .notes{white-space:pre-wrap;overflow-wrap:anywhere}
+ .save-row{margin-top:14px}
+ .location-fields{border:0;margin:0;padding:0;min-width:0}
+ .location-summary,.location-actions{margin-top:18px}
+ .location-summary p{margin:4px 0 0;overflow-wrap:anywhere}
+ @media(max-width:950px){.workflow{grid-template-columns:1fr}}
+ @media(max-width:560px){.editor-panel,.build{padding:16px}.date-grid{grid-template-columns:1fr;gap:0}}
+</style>

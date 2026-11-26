@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Next Adventure</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #fff;
+      color: #000;
+      font: 1rem/1.5 system-ui, sans-serif;
+    }
+    main { max-width: 72rem; margin: 2rem auto; padding: 0 1rem; }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr);
+      gap: 2rem;
+      align-items: start;
+    }
+    .build {
+      position: sticky;
+      top: 1rem;
+      border: 1px solid;
+      padding: 1rem;
+      overflow-wrap: anywhere;
+    }
+    .build h2 { margin: 0; font-size: 1.25rem; }
+    .build h3 { margin: 1rem 0 .5rem; font-size: 1rem; }
+    .build p { margin: .5rem 0 0; }
+    .build article + article { margin-top: .75rem; }
+    .build h4 { margin: 0; }
+    .build-notes { white-space: pre-wrap; }
+    .todo-entry { display: flex; gap: .5rem; }
+    .todo-entry input { min-width: 0; }
+    .todo-entry button { border-bottom: 1px solid; }
+    @media (max-width: 48rem) {
+      .layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+      .build { position: static; }
+    }
+    h1 { line-height: 1.2; }
+    [role="tablist"] { display: flex; flex-wrap: wrap; gap: .5rem; border-bottom: 1px solid; }
+    button, input, select, textarea {
+      font: inherit;
+      color: inherit;
+      background: #fff;
+      border: 1px solid #000;
+    }
+    .action-card { border: 1px solid; padding: .75rem 1rem; margin: .75rem 0; overflow-wrap: anywhere; }
+    .action-choice { display: flex; align-items: baseline; gap: .5rem; margin: 0; }
+    .action-choice input { width: auto; margin: 0; }
+    .action-plan { margin: .75rem 0 0; min-width: 0; }
+    .brainstorm-list { padding-left: 1.25rem; overflow-wrap: anywhere; }
+    .brainstorm-list li { margin: .75rem 0; }
+    .brainstorm-tools { display: inline-flex; gap: .2rem; margin-left: .4rem; vertical-align: middle; }
+    .brainstorm-tools button {
+      display: inline-grid;
+      place-items: center;
+      width: 1.75rem;
+      height: 1.75rem;
+      padding: 0;
+      border: 1px solid transparent;
+      border-radius: .2rem;
+      line-height: 1;
+    }
+    .brainstorm-tools button:hover { border-color: currentColor; }
+    #action { margin-top: 1.25rem; }
+    button { padding: .55rem 1rem; border-bottom: 0; cursor: pointer; }
+    button[aria-selected="true"] { background: #000; color: #fff; }
+    :focus-visible { outline: 2px solid #000; outline-offset: 3px; }
+    fieldset { margin: 1.5rem 0; padding: .75rem 1rem 1rem; border: 1px solid; }
+    legend { padding: 0 .25rem; font-weight: 600; }
+    label { display: block; margin: .5rem 0 .25rem; }
+    input, textarea { display: block; width: 100%; padding: .45rem .6rem; }
+    select { padding: .45rem .6rem; max-width: 100%; }
+    textarea { resize: vertical; }
+    .helper { margin: .4rem 0 .75rem; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>My Next Adventure</h1>
+    <div class="layout">
+      <div>
+        <div role="tablist" aria-label="Experiment stages">
+          <button type="button" role="tab" id="initiate-tab" aria-controls="initiate" aria-selected="true">Spark</button>
+          <button type="button" role="tab" id="focus-tab" aria-controls="focus" aria-selected="false" tabindex="-1">Focus</button>
+          <button type="button" role="tab" id="moving-tab" aria-controls="moving" aria-selected="false" tabindex="-1">Brainstorm</button>
+          <button type="button" role="tab" id="action-tab" aria-controls="action" aria-selected="false" tabindex="-1">Act</button>
+          <button type="button" role="tab" id="story-tab" aria-controls="story" aria-selected="false" tabindex="-1">Story So Far</button>
+        </div>
+
+        <section role="tabpanel" id="initiate" aria-labelledby="initiate-tab" tabindex="0">
+          <p>Directions: Let your attention wander. There are no wrong answers, and a small or odd answer is a good one.</p>
+          <fieldset>
+            <legend>1. What has captivated your attention lately? What draws you in?</legend>
+            <label for="attention-sentence">One sentence</label>
+            <input id="attention-sentence" type="text">
+            <label for="attention-notes">Notes</label>
+            <textarea id="attention-notes" rows="3"></textarea>
+          </fieldset>
+          <fieldset>
+            <legend>2. What's something you keep meaning to try?</legend>
+            <label for="try-sentence">One sentence</label>
+            <input id="try-sentence" type="text">
+            <label for="try-notes">Notes</label>
+            <textarea id="try-notes" rows="3"></textarea>
+          </fieldset>
+          <fieldset>
+            <legend>3. If you had a free Saturday morning and a friend to help, what would you explore here in Skagit?</legend>
+            <label for="skagit-sentence">One sentence</label>
+            <input id="skagit-sentence" type="text">
+            <label for="skagit-notes">Notes</label>
+            <textarea id="skagit-notes" rows="3"></textarea>
+          </fieldset>
+        </section>
+
+        <section role="tabpanel" id="focus" aria-labelledby="focus-tab" tabindex="0" hidden>
+          <p>Directions: Look at what you've written so far. What pulls you most for the next two weeks? Choose one interest to explore.</p>
+          <fieldset>
+            <legend>What would you like to explore over the next two weeks?</legend>
+            <label for="focus-sentence">One sentence</label>
+            <input id="focus-sentence" type="text" aria-describedby="focus-helper">
+            <p class="helper" id="focus-helper">If you're stuck between two, pick the one you'd be a little excited to tell a friend about.</p>
+            <label for="focus-notes">Notes</label>
+            <textarea id="focus-notes" rows="3"></textarea>
+          </fieldset>
+        </section>
+
+        <section role="tabpanel" id="moving" aria-labelledby="moving-tab" tabindex="0" hidden>
+          <p>Directions: Think of small things you might want to do around your interest. Each one should take about 15 minutes. Keep adding to the list. You can come back and edit it any time.</p>
+          <p id="brainstorm-focus"></p>
+          <fieldset>
+            <legend>Small actions</legend>
+            <form id="moving-form">
+              <label for="moving-action">Small action</label>
+              <div class="todo-entry">
+                <input id="moving-action" type="text" required>
+                <button type="submit">Add</button>
+              </div>
+            </form>
+            <ul class="brainstorm-list" id="moving-actions" aria-label="Small actions" aria-live="polite" hidden></ul>
+            <label for="moving-notes">Notes</label>
+            <textarea id="moving-notes" rows="3"></textarea>
+          </fieldset>
+        </section>
+
+        <section role="tabpanel" id="action" aria-labelledby="action-tab" tabindex="0" hidden>
+          <h2>Your Two-Week Experiment</h2>
+          <section aria-labelledby="action-focus-heading">
+            <h3 id="action-focus-heading">Your Focus</h3>
+            <p id="action-focus"></p>
+            <p id="action-focus-notes" class="build-notes" hidden></p>
+          </section>
+          <p>Directions: Here's your brainstorm list. If you want to add, remove, or change anything, go back to the Brainstorm tab. Then check the ones you'll do this week.</p>
+          <p id="action-empty">Add a small action in Brainstorm to get started.</p>
+          <div id="action-cards"></div>
+        </section>
+        <section role="tabpanel" id="story" aria-labelledby="story-tab" tabindex="0" hidden>
+          <h2>Story So Far</h2>
+          <p>Directions: Review and update the story below. We are most interested in how you conducted this experiment.</p>
+          <label for="story-address">Location (Address)</label>
+          <input id="story-address" type="text" autocomplete="street-address">
+          <label for="story-text">Story</label>
+          <textarea id="story-text" rows="14"></textarea>
+        </section>
+      </div>
+
+      <aside class="build" aria-labelledby="build-heading">
+        <h2 id="build-heading">Experiment build</h2>
+        <p id="build-empty">Your ideas, focus, and small actions will appear here as you write.</p>
+        <section id="build-ideas" aria-labelledby="build-ideas-heading" hidden>
+          <h3 id="build-ideas-heading">Ideas from Spark</h3>
+          <article data-preview="attention" hidden>
+            <h4>What draws you in</h4>
+            <p class="build-sentence"></p>
+            <p class="build-notes"></p>
+          </article>
+          <article data-preview="try" hidden>
+            <h4>What you’d like to try</h4>
+            <p class="build-sentence"></p>
+            <p class="build-notes"></p>
+          </article>
+          <article data-preview="skagit" hidden>
+            <h4>What you’d explore in Skagit</h4>
+            <p class="build-sentence"></p>
+            <p class="build-notes"></p>
+          </article>
+        </section>
+        <section data-preview="focus" aria-labelledby="build-focus-heading" hidden>
+          <h3 id="build-focus-heading">Your two-week focus</h3>
+          <p class="build-sentence"></p>
+          <p class="build-notes"></p>
+        </section>
+        <section data-preview="moving" aria-labelledby="build-moving-heading" hidden>
+          <h3 id="build-moving-heading">Brainstorm</h3>
+          <ul id="build-actions" aria-label="Small actions" hidden></ul>
+          <p class="build-notes"></p>
+        </section>
+      </aside>
+    </div>
+  </main>
+  <script>
+    const buildEmpty = document.getElementById('build-empty');
+    const buildIdeas = document.getElementById('build-ideas');
+    const buildEntries = Array.from(document.querySelectorAll('[data-preview]'), (entry) => {
+      const key = entry.dataset.preview;
+      return {
+        entry,
+        sentence: document.getElementById(key + '-sentence'),
+        notes: document.getElementById(key + '-notes'),
+        sentencePreview: entry.querySelector('.build-sentence'),
+        notesPreview: entry.querySelector('.build-notes'),
+      };
+    });
+
+    const movingForm = document.getElementById('moving-form');
+    const movingAction = document.getElementById('moving-action');
+    const movingActions = document.getElementById('moving-actions');
+    const buildActions = document.getElementById('build-actions');
+
+    const actionCards = document.getElementById('action-cards');
+    const actionEmpty = document.getElementById('action-empty');
+    const actionFocus = document.getElementById('action-focus');
+    const actionFocusNotes = document.getElementById('action-focus-notes');
+    const focusSentence = document.getElementById('focus-sentence');
+    const focusNotes = document.getElementById('focus-notes');
+    const brainstormFocus = document.getElementById('brainstorm-focus');
+    const storyText = document.getElementById('story-text');
+    let previousDraft = '';
+    const actions = [];
+    const planLabels = ['I will', 'When', 'For how long', "I'll keep track by", "I'm hoping to notice or find out"];
+
+    movingForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const title = movingAction.value.trim();
+      if (!title) return;
+
+      const item = document.createElement('li');
+      const itemTitle = document.createElement('span');
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.textContent = '✎';
+      edit.title = 'Edit';
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = '×';
+      remove.title = 'Remove';
+
+      const card = document.createElement('article');
+      card.className = 'action-card';
+      const choice = document.createElement('label');
+      choice.className = 'action-choice';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      const choiceTitle = document.createElement('span');
+      choice.append(checkbox, choiceTitle);
+
+      const plan = document.createElement('fieldset');
+      plan.className = 'action-plan';
+      plan.hidden = true;
+      const legend = document.createElement('legend');
+      plan.append(legend);
+      const fields = [];
+      for (const text of planLabels) {
+        const label = document.createElement('label');
+        label.textContent = text;
+        const input = document.createElement('input');
+        input.type = 'text';
+        label.append(input);
+        plan.append(label);
+        fields.push(input);
+      }
+      const example = document.createElement('p');
+      example.className = 'helper';
+      example.textContent = 'Example: I will sit outside and watch birds, Tuesday and Thursday mornings, 15 minutes each, and take notes on what I see.';
+      plan.append(example);
+
+      const doneLabel = document.createElement('label');
+      doneLabel.className = 'action-choice';
+      const done = document.createElement('input');
+      done.type = 'checkbox';
+      doneLabel.append(done, 'I did this');
+      plan.append(doneLabel);
+
+      const action = { title, checkbox, fields, done };
+      function updateTitle() {
+        itemTitle.textContent = action.title;
+        choiceTitle.textContent = action.title;
+        legend.textContent = 'Plan for ' + action.title;
+        edit.setAttribute('aria-label', 'Edit ' + action.title);
+        remove.setAttribute('aria-label', 'Remove ' + action.title);
+      }
+      edit.addEventListener('click', () => {
+        const revision = window.prompt('Edit small action', action.title)?.trim();
+        if (!revision) return;
+        action.title = revision;
+        updateTitle();
+        updateBuild();
+      });
+      remove.addEventListener('click', () => {
+        actions.splice(actions.indexOf(action), 1);
+        item.remove();
+        card.remove();
+        movingAction.focus();
+        updateBuild();
+      });
+      checkbox.addEventListener('change', () => {
+        plan.hidden = !checkbox.checked;
+        updateBuild();
+      });
+      updateTitle();
+      const tools = document.createElement('span');
+      tools.className = 'brainstorm-tools';
+      tools.append(edit, remove);
+      item.append(itemTitle, tools);
+      card.append(choice, plan);
+      movingActions.append(item);
+      actionCards.append(card);
+      actions.push(action);
+      movingAction.value = '';
+      movingAction.focus();
+      updateBuild();
+    });
+
+    function updateStory(focus) {
+      if (storyText.value !== previousDraft) return;
+
+      const paragraphs = [];
+      const notes = focusNotes.value.trim();
+      if (focus) paragraphs.push('Two-week focus: ' + focus);
+      if (notes) paragraphs.push('Focus notes: ' + notes);
+      for (const { title, checkbox, fields, done } of actions) {
+        if (!checkbox.checked && !done.checked) continue;
+        const lines = [(done.checked ? 'Action taken: ' : 'Planned action: ') + title];
+        fields.forEach((field, index) => {
+          const value = field.value.trim();
+          if (value) lines.push(planLabels[index] + ': ' + value);
+        });
+        paragraphs.push(lines.join('\n'));
+      }
+
+      const draft = paragraphs.join('\n\n');
+      if (draft !== previousDraft) {
+        storyText.value = draft;
+        previousDraft = draft;
+      }
+    }
+
+    function updateBuild() {
+      const focus = focusSentence.value.trim();
+      updateStory(focus);
+      actionFocus.textContent = focus || 'Add a two-week interest in Focus.';
+      brainstormFocus.textContent = focus ? 'Your focus: ' + focus : 'Choose a two-week interest in Focus to guide your brainstorm.';
+      movingActions.hidden = actions.length === 0;
+      actionEmpty.hidden = actions.length > 0;
+      actionFocusNotes.textContent = focusNotes.value.trim();
+      actionFocusNotes.hidden = !actionFocusNotes.textContent;
+      buildActions.replaceChildren(...actions.map(({ title, checkbox, done }) => {
+        const preview = document.createElement('li');
+        preview.textContent = title + (done.checked ? ' (done)' : checkbox.checked ? ' (this week)' : '');
+        return preview;
+      }));
+      buildActions.hidden = buildActions.children.length === 0;
+
+      for (const { entry, sentence, notes, sentencePreview, notesPreview } of buildEntries) {
+        if (notesPreview) {
+          notesPreview.textContent = notes.value.trim();
+          notesPreview.hidden = !notesPreview.textContent;
+        }
+        if (sentencePreview) {
+          sentencePreview.textContent = sentence.value.trim();
+          sentencePreview.hidden = !sentencePreview.textContent;
+        }
+        const contentPreview = sentencePreview || buildActions;
+        entry.hidden = contentPreview.hidden && (!notesPreview || notesPreview.hidden);
+      }
+
+      buildIdeas.hidden = !buildEntries.some(({ entry }) =>
+        buildIdeas.contains(entry) && !entry.hidden
+      );
+      buildEmpty.hidden = buildEntries.some(({ entry }) => !entry.hidden);
+    }
+
+    document.querySelector('.layout').addEventListener('input', updateBuild);
+    window.addEventListener('pageshow', updateBuild);
+    updateBuild();
+
+    for (const tabList of document.querySelectorAll('[role="tablist"]')) {
+      const tabs = Array.from(tabList.querySelectorAll('[role="tab"]'));
+
+      function selectTab(selectedTab) {
+        for (const tab of tabs) {
+          const isSelected = tab === selectedTab;
+          tab.setAttribute('aria-selected', String(isSelected));
+          tab.tabIndex = isSelected ? 0 : -1;
+          document.getElementById(tab.getAttribute('aria-controls')).hidden = !isSelected;
+        }
+        selectedTab.focus();
+      }
+
+      for (const tab of tabs) {
+        tab.addEventListener('click', () => selectTab(tab));
+      }
+
+      tabList.addEventListener('keydown', (event) => {
+        const index = tabs.indexOf(event.target);
+        let nextIndex;
+        switch (event.key) {
+          case 'ArrowLeft':
+            nextIndex = (index - 1 + tabs.length) % tabs.length;
+            break;
+          case 'ArrowRight':
+            nextIndex = (index + 1) % tabs.length;
+            break;
+          case 'Home':
+            nextIndex = 0;
+            break;
+          case 'End':
+            nextIndex = tabs.length - 1;
+            break;
+          default:
+            return;
+        }
+        event.preventDefault();
+        selectTab(tabs[nextIndex]);
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,7 +1,8 @@
 <script lang="ts">
+ import {isMapCopy} from '$lib/raft-flow.mjs';
  import {page} from '$app/stores';import {api,documents,message,notify} from '$lib/workspace';import {buildExperimentArchive,bundleDocuments,documentPaths} from '$lib/export.mjs';import Icon from '$lib/Icon.svelte';
  let selected=$page.url.searchParams.get('id')||'',history=false,busy=false,error='',progress='',complete=false,warnings:string[]=[];
- $: experiments=$documents.filter(d=>d.doc_type==='experiment');
+ $: experiments=$documents.filter(d=>d.doc_type==='experiment'&&!isMapCopy(d));
  $: if(!selected&&experiments.length)selected=experiments[0].revision.document_id;
  $: parent=experiments.find(d=>d.revision.document_id===selected);
  $: included=parent?bundleDocuments(parent,$documents):[];

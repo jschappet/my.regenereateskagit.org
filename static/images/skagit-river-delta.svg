@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 260" role="img" aria-labelledby="title description">
+  <title id="title">Skagit River Delta</title>
+  <desc id="description">A stylized map of the North and South Forks of the Skagit River flowing around Fir Island into Skagit Bay.</desc>
+  <defs>
+    <clipPath id="frame"><rect width="480" height="260" rx="14"/></clipPath>
+    <pattern id="water" width="31" height="19" patternUnits="userSpaceOnUse">
+      <path d="M3 11q5-2 10 0" fill="none" stroke="#718f81" stroke-opacity=".29" stroke-width=".8"/>
+    </pattern>
+    <pattern id="fields" width="34" height="26" patternUnits="userSpaceOnUse" patternTransform="rotate(-12)">
+      <path d="M0 0h34v26H0z" fill="none" stroke="#829269" stroke-opacity=".43"/>
+      <path d="M4 5h25M4 9h25M4 17h25M4 21h25" stroke="#829269" stroke-opacity=".23" stroke-width=".7"/>
+    </pattern>
+    <path id="island" d="M309 105c-11 8-19 15-36 17-18 2-30-10-46-4-15 5-17 19-36 23-9 2-17 0-24 5 5 12 9 23 23 29 10 4 17 1 27 9 11 10 22 10 35 17 12 5 25 10 36 7 7-4 3-14 12-23 9-10 21-17 17-30-3-12-15-17-12-29 2-7 7-14 4-21Z"/>
+  </defs>
+  <g clip-path="url(#frame)">
+    <path fill="#bfd2c4" d="M0 0h480v260H0z"/>
+    <path fill="url(#water)" d="M0 0h480v260H0z"/>
+    <path fill="#dce3c5" stroke="#a4af8a" d="M77 0h403v260H344c-5-15-17-21-13-34 4-16 22-23 16-42-5-17-16-25-13-44 3-17 1-31-15-42-19 13-34 22-52 16-17-6-34-9-50 2-16 11-18 18-39 16-19-1-25 11-39 13-14 0-23-9-34-7-17 3-25-5-24-17 0-13 17-19 14-32-2-12-14-17-12-28 2-11 17-17 14-29-3-10-16-16-20-32Z"/>
+    <path fill="url(#fields)" d="M122 0h169l-15 83c-21-2-40 4-61 18l-56 20-27-36Zm250 68h108v192H358l10-40 11-32-19-58Z"/>
+    <use href="#island" fill="#d7dfb9" stroke="#a4af8a"/>
+    <use href="#island" fill="url(#fields)"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M425-9c-27 33-14 56-42 65-19 7-39-3-52 13-10 12 3 19-12 29-19 13-34 22-52 16-17-6-34-9-50 2-16 11-18 18-39 16-19-1-25 11-39 13-16 3-31 11-42 21m222-68c16 11 18 25 15 42-3 19 8 27 13 44 6 19-12 26-16 42-2 9-11 14-18 23" stroke="#91b0a0" stroke-width="11"/>
+      <path d="M425-9c-27 33-14 56-42 65-19 7-39-3-52 13-10 12 3 19-12 29-19 13-34 22-52 16-17-6-34-9-50 2-16 11-18 18-39 16-19-1-25 11-39 13-16 3-31 11-42 21m222-68c16 11 18 25 15 42-3 19 8 27 13 44 6 19-12 26-16 42-2 9-11 14-18 23" stroke="#618979" stroke-width="4.5"/>
+      <path d="M133 147c-11 8-9 17-23 22l-21 10m44-32c-9 0-17-5-28-1l-25 8m251 72c-14 0-22 4-33 13l-12 12m45-25c-4 12 1 18-5 30m-127-78c-9 4-15 2-24 9m44 1c-8 3-9 8-19 10m52 3c-3 7-9 7-12 14" stroke="#739685" stroke-width="1.2"/>
+    </g>
+    <g fill="#415d49" font-family="Georgia, serif" font-size="13" text-anchor="middle">
+      <text x="247" y="157">Fir Island</text>
+      <text x="151" y="210" font-size="16" font-style="italic">Skagit Bay</text>
+      <text x="219" y="90">North Fork</text>
+      <text x="389" y="172">South Fork</text>
+    </g>
+  </g>
+</svg>

@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {steps,parseSections,composeSections,experimentDocuments,startReadiness} from '../src/lib/journey.mjs';
-import {sameContent} from '../src/lib/content.mjs';
+import {sameContent,draftTags,explicitTags,normalizeTags} from '../src/lib/content.mjs';
 const doc=(id,type,meta={})=>({doc_type:type,meta,revision:{document_id:id}});
 const child=(id,type,meta={})=>doc(id,type,{...meta,links:[{relation:'part_of',targets:[{document_id:'parent'}]}]});
 test('each journey step is its own draft type, with the start after invitations and scheduling',()=>{
@@ -31,4 +31,15 @@ test('creation retries compare actual content without depending on JSON object k
  const payload={doc_type:'idea',title:'Seeds',body_md:'A thought',meta:{b:2,a:{y:2,x:1}}};
  assert.ok(sameContent({...payload,meta:{a:{x:1,y:2},b:2},details:null},payload));
  assert.ok(!sameContent({...payload,body_md:'Someone else’s version'},payload));
+});
+
+test('draft tagging keeps Markdown tags out of the explicit save payload',()=>{
+ const tags=JSON.stringify(normalizeTags(['Food','#Community','FOOD']));
+ const payload={doc_type:'idea',title:'Seeds',body_md:'Try #compost',meta:{},tags};
+ const draft={...payload,explicit_tags:['community','food'],tag_names:['community','compost','food']};
+ assert.deepEqual(explicitTags(draft),['community','food']);
+ assert.deepEqual(draftTags(draft),['community','compost','food']);
+ assert.deepEqual(draftTags({tags:'Food',meta:{tags:' #Community '}}),['community','food']);
+ assert.ok(sameContent(draft,payload));
+ assert.ok(!sameContent(draft,{...payload,tags:JSON.stringify(['food'])}));
 });

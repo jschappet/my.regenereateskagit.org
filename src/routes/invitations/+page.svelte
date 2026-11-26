@@ -22,6 +22,7 @@
   const shared=!!$page.url.searchParams.get('share');
   await api.call(shared?'invitation_join':'invitation_respond',{id:invitation!.id},shared?{}:{action});
   api.invalidateCapabilities();await load();
+  if(action==='accept'&&invitation?.viewer_url)try{await refreshDocuments();}catch{/* Workspace displays refresh errors. */}
  }catch(e){error=message(e);}finally{busy=false;}}
  async function switchAccount(){try{await signOut();login=true;await load();}catch(e){error=message(e);}}
  async function follow(){if(!$session.profile?.authenticated){login=true;return;}busy=true;error='';try{await api.call('invitation_follow',{id:invitation!.id},{});await load();}catch(e){error=message(e);}finally{busy=false;}}
@@ -32,7 +33,7 @@
  {#if loading}<p role="status">Opening your invitation…</p>{:else if invitation}<div class="page-heading"><span class="eyebrow">{purpose==='feedback'?'YOUR EXPERIENCE MATTERS':'YOU’RE INVITED'}</span><h1>{invitation.title}</h1><p>An invitation from {invitation.sender_name}</p></div><img class="invitation-photo" src={invitation.image} alt="Invitation cover"/><section class="panel"><div class="invitation-body">{@html renderMarkdown(invitation.body)}</div></section>
  {#if invitation.is_sender}<section class="panel"><h2>Your invitation</h2><p>This is what recipients see. Their response joins this invitation’s specific role group. Feedback does not add members.</p></section>
  {:else if purpose==='feedback'}{#if invitation.response_share_id}<ImpactResponse shareId={invitation.response_share_id}/>{:else}<p class="alert">This feedback invitation is not accepting responses. Ask the owner for a current link.</p>{/if}
- {:else}<section class="panel invitation-response"><h2>{labels[purpose]||'Respond to this invitation'}</h2><p>Accepting joins this invitation’s {purpose==='follow'?'follow-along':purpose} group. You can view only the sections shared with that group. Editing and ownership are separate permissions.</p>
+ {:else}<section class="panel invitation-response"><h2>{labels[purpose]||'Respond to this invitation'}</h2><p>Accepting joins this invitation’s {purpose==='follow'?'follow-along':purpose} group. {purpose==='collaboration'?'The experiment will appear in your workspace. You can read the sections the owner shares with your group.':'You can read the sections the owner shares with your group.'}</p>
  {#if invitation.viewer_url}<p class="success" role="status">You’re a member of this invitation’s group.</p><a class="button primary" href={invitation.viewer_url}>View the experiment</a>
  {:else if invitation.status==='declined'}<p>You declined this invitation.</p>
  {:else if invitation.status==='accepted'}<p>Your previous acceptance no longer grants access. Contact the owner if your membership was removed.</p>
