@@ -3,9 +3,11 @@
  import {isMapCopy} from '$lib/raft-flow.mjs';
  import {documents, loadingDocuments, openCreate, dirtyEditor} from '$lib/workspace';
  import {experimentDocuments} from '$lib/journey.mjs';
+ import CollaboratingExperiments from '$lib/CollaboratingExperiments.svelte';
  import ExperimentMap from '$lib/ExperimentMap.svelte';
  import ExperimentCard from '$lib/ExperimentCard.svelte';
  import ExperimentWorkflow from '$lib/ExperimentWorkflow.svelte';
+ import ReadOnlyExperiment from '$lib/ReadOnlyExperiment.svelte';
  import ReadOnlyDraft from '$lib/ReadOnlyDraft.svelte';
  import SharePanel from '$lib/SharePanel.svelte';
  import InvitationManager from '$lib/InvitationManager.svelte';
@@ -24,6 +26,7 @@
  $: id=$page.url.searchParams.get('id')||'';
  $: parent=$documents.find(draft=>draft.revision.document_id===id&&draft.doc_type==='experiment');
  $: children=parent?experimentDocuments(parent,$documents) as Draft[]:[];
+ $: readOnly=$page.url.searchParams.get('read')==='1';
  $: sharing=$page.url.searchParams.get('share')==='1';
 </script>
 
@@ -37,11 +40,14 @@
    <button class="button primary" on:click={()=>openCreate()}>Start an experiment</button>
   {/each}
  </div>
+ <CollaboratingExperiments/>
 {:else if $loadingDocuments&&!parent}
  <div class="loading-panel">Opening your experiment…</div>
 {:else if parent}
  {#key id}
-  {#if parent.meta?.workflow_version!==2}
+  {#if readOnly}
+   <ReadOnlyExperiment experiment={parent}/>
+  {:else if parent.meta?.workflow_version!==2}
    <section aria-label="Earlier experiment">
     <h2>Earlier experiment</h2>
     <p>This experiment and its saved drafts are read-only.</p>

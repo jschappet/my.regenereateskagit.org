@@ -15,7 +15,7 @@ export function documentUrl(id,documents){
  if(parent){
   const root=encodeURIComponent(parent.revision.document_id);
   if(parent.meta?.workflow_version!==2)return `/experiments/?id=${root}&draft=${encodeURIComponent(id)}`;
-  const steps={spark:'spark',focus:'focus',brainstorm:'brainstorm',act:'act',story:'story'};
+  const steps={brainstorm:'act',act:'act',story:'story'};
   if(doc.doc_type==='act')return `/experiments/?id=${root}&step=act&draft=${encodeURIComponent(id)}#draft-${encodeURIComponent(id)}`;
   if(steps[doc.doc_type])return `/experiments/?id=${root}&step=${steps[doc.doc_type]}`;
  }

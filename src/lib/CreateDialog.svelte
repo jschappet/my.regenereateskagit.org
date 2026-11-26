@@ -4,11 +4,15 @@
  import {sourceLink} from './experiment-source.mjs';
  import type {Target} from './types';
  import Icon from './Icon.svelte';
+ import IdeaTabs from './IdeaTabs.svelte';
+ import IdeaFields from './IdeaFields.svelte';
+ import {ideaResponses} from './idea.mjs';
  import TagEditor from './TagEditor.svelte';
 
  let dialog:HTMLDialogElement;
  let tags:string[]=[], newId='', title='', type='experiment', sourceId='', sourceUrl='', error='';
  let contextualSource:Target|undefined;
+ let stage='idea', ideaBody='', responses=ideaResponses();
  let busy=false, wasOpen=false;
  $: choices=$documents.filter(doc=>['interest','experiment','idea','action','act'].includes(doc.doc_type)
   || doc.revision.document_id===contextualSource?.document_id);
@@ -25,6 +29,9 @@
   sourceUrl=typeof source==='object'?source.url??'':'';
   title=draft?.doc_type==='interest'?draft.title:'';
   tags=[];
+  stage='idea';
+  ideaBody='';
+  responses=ideaResponses();
   error='';
   dialog.showModal();
  }
@@ -33,6 +40,7 @@
  function close(){if(!busy)createDialog.set({open:false,type:'experiment'});}
  async function create(){
   if(busy)return;
+  if(!title.trim()){stage='idea';error='Give your draft a name.';return;}
   busy=true;
   error='';
   try{
@@ -43,8 +51,8 @@
    const links=type!=='experiment'||!sourceId?[]
     :sourceId==='url'?sourceLink(undefined,sourceUrl)
     :sourceLink(target,sourceUrl);
-   const meta={workspace_version:1,...(type==='experiment'?{workflow_version:2}:{}),links};
-   await saveDocument({doc_type:type,title:title.trim(),body_md:'',tags:JSON.stringify(tags),meta},null,newId);
+   const meta={workspace_version:1,...(type==='experiment'?{workflow_version:2}:type==='idea'?responses:{}),links};
+   await saveDocument({doc_type:type,title:title.trim(),body_md:type==='idea'?ideaBody:'',tags:JSON.stringify(tags),meta},null,newId);
    createDialog.set({open:false,type});
    notify(type==='experiment'?'An experiment is taking shape.':'Your new draft is ready.');
    await goto(type==='experiment'?`/experiments/?id=${newId}`:`/documents/?id=${newId}`);
@@ -67,10 +75,28 @@
     <option value="idea">An idea</option><option value="story">A story</option>
    </select>
   </label>
+  {#if type==='idea'}
+   <IdeaTabs id="create-idea" bind:stage={stage}/>
+  {/if}
+  <div id="create-idea-panel-idea" role={type==='idea'?'tabpanel':undefined}
+   aria-labelledby={type==='idea'?'create-idea-tab-idea':undefined} hidden={type==='idea'&&stage!=='idea'}>
   <label for="new-title">Give it a name
-   <input id="new-title" bind:value={title} required maxlength="180" placeholder="A question, a topic, a possibility…" disabled={busy}/>
+   <input id="new-title" bind:value={title} required={type!=='idea'||stage==='idea'} maxlength="180" placeholder="A question, a topic, a possibility…" disabled={busy}/>
   </label>
+  {#if type==='idea'}<label>Idea notes<textarea rows="4" bind:value={ideaBody} disabled={busy}></textarea></label>{/if}
   <TagEditor bind:tags disabled={busy}/>
+  </div>
+  {#if type==='idea'}
+   {#each ['spark','focus'] as panel}
+    <div role="tabpanel" id={'create-idea-panel-'+panel} aria-labelledby={'create-idea-tab-'+panel} hidden={stage!==panel}>
+     {#if stage===panel}
+      <fieldset disabled={busy}>
+       <IdeaFields stage={panel} bind:spark={responses.spark} bind:focus={responses.focus}/>
+      </fieldset>
+     {/if}
+    </div>
+   {/each}
+  {/if}
   {#if type==='experiment'}
    <label for="new-source">What inspired this experiment?
     <select id="new-source" bind:value={sourceId} disabled={busy}>

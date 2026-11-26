@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {geoMercator,geoPath} from 'd3';
+import {geoContains,geoMercator,geoPath} from 'd3';
 import {experimentMapPlaces} from '../src/lib/experiment-map.mjs';
 
 const point={latitude:48.42,longitude:-122.33,name:'Garden'};
@@ -36,10 +36,18 @@ test('an existing map submission supplies a pin when the experiment has no saved
 
 test('the bundled geography fits the watershed at desktop and mobile sizes',()=>{
  const data=JSON.parse(readFileSync(new URL('../static/map/skagit-geography.json',import.meta.url)));
+ const extent={type:'FeatureCollection',features:[...data.basins.features,...data.watersheds.features]};
+ const basins=new Map(data.watersheds.features.map(basin=>[basin.properties.name,basin]));
+ const canada=[-121.08,49.06],stanwood=[-122.35,48.24],southForkDelta=[-122.38,48.26];
+ assert.ok(geoContains(basins.get('Upper Skagit'),canada));
+ assert.ok(geoContains(basins.get('Lower Skagit'),southForkDelta));
+ assert.ok(!basins.has('Stillaguamish'));
+ assert.ok(!geoContains(extent,stanwood));
+ assert.ok(!geoContains(basins.get('Lower Skagit'),stanwood));
  for(const [width,height] of [[900,480],[340,290]]){
-  const projection=geoMercator().fitExtent([[24,24],[width-24,height-24]],data.basins);
+  const projection=geoMercator().fitExtent([[24,24],[width-24,height-24]],extent);
   const path=geoPath(projection);
-  const [[left,top],[right,bottom]]=path.bounds(data.basins);
+  const [[left,top],[right,bottom]]=path.bounds(extent);
   assert.ok(left>=23&&top>=23&&right<=width-23&&bottom<=height-23);
   const [x,y]=projection([-122.33,48.42]);
   assert.ok(x>24&&x<width-24&&y>24&&y<height-24);

@@ -16,7 +16,8 @@
   try{
    const result=await api.call<Graph>('content_graph');
    if(!result)throw new Error('The server did not return experiment connections.');
-   if(!result.nodes.some(node=>node.id===focus&&node.node_type==='experiment'))focus='';
+   const {experiments,ideas}=experimentConnections(result);
+   if(![...experiments,...ideas].some(node=>node.id===focus))focus='';
    graph.set(result);
   }catch(e){error=message(e);}
   finally{loading=false;}
@@ -31,7 +32,7 @@
 <svelte:head><title>Experiment connections · Regenerate Skagit</title></svelte:head>
 <div class="page-heading">
  <h1>Experiment connections</h1>
- <p>See what your experiments grew from and how they connect to other experiments, interests, and stories.</p>
+ <p>Start from an experiment or idea to see what connects to it. Ideas show up to three levels of follow-up experiments.</p>
 </div>
 
 {#if error}
@@ -39,14 +40,25 @@
  <button class="button" on:click={load}>Try again</button>
 {:else if loading}
  <p role="status">Loading experiment connections…</p>
-{:else if connections.experiments.length}
+{:else if connections.experiments.length||connections.ideas.length}
  <div class="ledger-toolbar">
-  <label>Focus on an experiment
+  <label>Start from
    <select bind:value={focus}>
-    <option value="">All experiments</option>
-    {#each connections.experiments as experiment (experiment.id)}
-     <option value={experiment.id}>{experiment.title}</option>
-    {/each}
+    <option value="">All experiments and ideas</option>
+    {#if connections.experiments.length}
+     <optgroup label="Experiments">
+      {#each connections.experiments as experiment (experiment.id)}
+       <option value={experiment.id}>{experiment.title}</option>
+      {/each}
+     </optgroup>
+    {/if}
+    {#if connections.ideas.length}
+     <optgroup label="Ideas">
+      {#each connections.ideas as idea (idea.id)}
+       <option value={idea.id}>{idea.title}</option>
+      {/each}
+     </optgroup>
+    {/if}
    </select>
   </label>
   <button class="button secondary" on:click={()=>graphVersion++}>Reset graph</button>
@@ -77,9 +89,9 @@
     </table>
    </div>
   {:else}
-   <p>No connections recorded for these experiments yet.</p>
+   <p>No connections recorded for this selection yet.</p>
   {/if}
  </details>
 {:else}
- <div class="empty-card"><h2>No experiments yet</h2><a class="button secondary" href="/library/">Visit your library</a></div>
+ <div class="empty-card"><h2>No experiments or ideas yet</h2><a class="button secondary" href="/library/">Visit your library</a></div>
 {/if}

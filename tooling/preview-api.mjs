@@ -116,7 +116,7 @@ export function previewApi(){
    return respond({message:'This action is unavailable in the sample workspace'},400);
   }
   if(!signedIn)return respond({message:'Sign in to continue'},401);
-  if(url.pathname==='/api/upload')return respond({url:'/api/shares/default-photo.jpg'});
+  if(url.pathname==='/api/upload')return respond({url:new URL('/api/shares/default-photo.jpg','http://'+req.headers.host).href});
   if(url.pathname.startsWith('/api/shares/document/')){const doc=url.pathname.split('/').at(-1);const share=[...shares.values()].find(s=>s.document_id===doc);return respond(share?{...share,responses:[...responses.values()].filter(r=>r.share_id===share.id),followers:[],url:`/api/shares/${share.id}/preview`}:null);}
   if(url.pathname==='/api/shares/create'){const existing=[...shares.values()].find(s=>s.document_id===body.document_id);const id=existing?.id||randomUUID();shares.set(id,{...body,id,active:true,author:'Jamie Rivers',kind:docs.get(body.document_id)?.doc_type||'experiment'});return respond({id,url:`/api/shares/${id}/preview`});}
   if(url.pathname==='/api/invitations/send'){

@@ -19,8 +19,9 @@
  $: places=[...communityMapPlaces(community),...ownPlaces];
  $: unmapped=unmappedExperimentLocations(experiments,$documents);
  $: current=places.find(place=>place.key===selected);
- $: projection=geography&&width>64&&height>64
-  ? geoMercator().fitExtent([[24,24],[width-24,height-24]],geography.basins) : null;
+ $: mapExtent=geography&&{type:'FeatureCollection',features:[...geography.basins.features,...geography.watersheds.features]};
+ $: projection=mapExtent&&width>64&&height>64
+  ? geoMercator().fitExtent([[24,24],[width-24,height-24]],mapExtent) : null;
  $: path=projection?geoPath(projection):null;
  $: riverPath=path&&geography?path(geography.rivers):'';
  $: pins=projection?places.map(place=>{
@@ -63,11 +64,18 @@
  </div>
 
  <div class="map-stage" bind:clientWidth={width} bind:clientHeight={height}>
-  <svg bind:this={svg} viewBox={'0 0 '+width+' '+height} role="img" aria-label="Skagit watershed basins and streams">
+  <svg bind:this={svg} viewBox={'0 0 '+width+' '+height} role="img" aria-label="Skagit watershed including the Canadian headwaters">
    {#if path&&geography}
     <g transform={transform.toString()}>
+     {#each geography.watersheds.features as watershed (watershed.id)}
+      <path d={path(watershed)} fill={basinColors[0]}/>
+     {/each}
      {#each geography.basins.features as basin,index (basin.id)}
       <path d={path(basin)} fill={basinColors[index%basinColors.length]} stroke="#abbfa9" stroke-width=".7" vector-effect="non-scaling-stroke"/>
+     {/each}
+     {#each geography.watersheds.features as watershed (watershed.id)}
+      <path d={path(watershed)} fill="none" stroke="#80997d"
+       stroke-width="1" vector-effect="non-scaling-stroke"/>
      {/each}
      <path d={riverPath} fill="none" stroke="#6c9997" stroke-width=".8" opacity=".8" vector-effect="non-scaling-stroke"/>
     </g>
@@ -85,6 +93,7 @@
  </div>
 
  <div class="map-legend" aria-label="Map legend">
+  <span><i class="basin-swatch" style:background={basinColors[0]} aria-hidden="true"></i> Skagit watershed</span>
   <span><b aria-hidden="true">◆</b> Your experiments</span>
   <span><b class="community" aria-hidden="true">○</b> Community experiments</span>
  </div>
@@ -112,10 +121,12 @@
    </ul>
   </div>
  {/if}
- <p class="fine map-credit">Basin and stream coverage follows the <a class="text-link" href="https://regenerateskagit.org/atlas/#sources">Regenerate Skagit atlas</a> and its Skagit County GIS data.</p>
+ <p class="fine map-credit">Watershed boundaries from the <a class="text-link" href="https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer">USGS Watershed Boundary Dataset</a>.
+  Local sub-basins and streams from <a class="text-link" href="https://regenerateskagit.org/atlas/#sources">Skagit County GIS</a>.</p>
 </section>
 
 <style>
+ .basin-swatch{display:inline-block;width:.8em;height:.8em;border:1px solid #80997d;border-radius:2px}
  .experiment-map{margin-bottom:28px}
  .map-header{display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:14px}
  h2{margin:0 0 4px}
